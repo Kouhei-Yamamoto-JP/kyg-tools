@@ -94,10 +94,6 @@ body {
   font-size: 0.9rem;
 }
 
-.card-meta {
-  margin-top: 0.75rem !important;
-  font-size: 0.8rem !important;
-}
 
 .card code {
   font-family: var(--mono);
