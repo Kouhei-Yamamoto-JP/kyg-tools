@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="X（Twitter）の表示名に改行（Unicode Line Separator U+2028）を入れるツール。絵文字対応。">
+  <title>X 表示名改行ツール</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main class="container">
+    <header class="header">
+      <h1>X 表示名改行ツール</h1>
+      <p class="subtitle">表示名に改行を入れて、Xの設定にコピーして貼り付けます。</p>
+    </header>
+
+    <ol class="steps" aria-label="使い方の手順">
+      <li><strong>入力</strong> — 改行したい位置で Enter</li>
+      <li><strong>変換</strong> — U+2028（LSEP）に置き換え</li>
+      <li><strong>コピー</strong> — 結果をクリップボードへ</li>
+      <li><strong>貼り付け</strong> — Xの設定 → 表示名に貼る</li>
+    </ol>
+
+    <section class="panel" aria-labelledby="input-label">
+      <label id="input-label" for="input">表示名を入力</label>
+      <textarea
+        id="input"
+        rows="4"
+        maxlength="50"
+        placeholder="1行目&#10;2行目（絵文字もOK ✨）"
+        spellcheck="false"
+        autocomplete="off"
+      ></textarea>
+      <p class="hint warn">
+        改行の直前・直後にスペースがあると、X側で改行が効かないことがあります。スペースは避けてください。
+      </p>
+      <p class="hint">
+        Enter で改行位置を指定。絵文字・肌色・ZWJ・国旗はそのまま残ります。
+      </p>
+    </section>
+
+    <div class="actions">
+      <button type="button" id="convert-btn" class="btn primary">変換</button>
+      <button type="button" id="copy-btn" class="btn" disabled>コピー</button>
+      <button type="button" id="clear-btn" class="btn ghost">クリア</button>
+    </div>
+
+    <section class="panel" aria-labelledby="preview-label">
+      <h2 id="preview-label">プレビュー</h2>
+      <div id="preview" class="preview" aria-live="polite">（まだ変換されていません）</div>
+    </section>
+
+    <section class="panel" aria-labelledby="result-label">
+      <h2 id="result-label">変換結果（LSEP入り）</h2>
+      <textarea id="result" rows="3" readonly placeholder="変換後の文字列がここに表示されます"></textarea>
+      <p id="copy-status" class="status" role="status" aria-live="polite"></p>
+      <p class="hint mono" id="codepoints"></p>
+    </section>
+
+    <footer class="footer">
+      <p>改行には Unicode Line Separator（U+2028 / LSEP）を使用します。<code>\n</code> や <code>\r\n</code> のみを置き換え、他の文字はそのまま保持します。</p>
+    </footer>
+  </main>
+  <script src="app.js"></script>
+</body>
+</html>
