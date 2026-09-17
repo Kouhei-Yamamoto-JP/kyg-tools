@@ -6,8 +6,6 @@
   --muted: #8b9bb4;
   --accent: #1d9bf0;
   --accent-hover: #1a8cd8;
-  --warn: #f7b955;
-  --ok: #00ba7c;
   --radius: 12px;
   --font: system-ui, -apple-system, "Segoe UI", "Hiragino Sans", "Noto Sans JP", sans-serif;
   --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
@@ -33,14 +31,23 @@ body {
 }
 
 .container {
-  width: min(100% - 2rem, 40rem);
+  width: min(100% - 2rem, 42rem);
   margin: 0 auto;
-  padding: 2rem 0 3rem;
+  padding: 2.5rem 0 3rem;
+}
+
+.brand {
+  margin: 0 0 0.5rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: var(--accent);
+  text-transform: lowercase;
 }
 
 .header h1 {
-  margin: 0 0 0.35rem;
-  font-size: clamp(1.35rem, 4vw, 1.75rem);
+  margin: 0 0 0.4rem;
+  font-size: clamp(1.5rem, 4vw, 2rem);
   font-weight: 700;
   letter-spacing: 0.02em;
 }
@@ -51,174 +58,64 @@ body {
   font-size: 0.95rem;
 }
 
-.steps {
-  margin: 1.5rem 0;
-  padding: 1rem 1rem 1rem 2rem;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  color: var(--muted);
-  font-size: 0.9rem;
+.tools {
+  display: grid;
+  gap: 1rem;
+  margin-top: 2rem;
 }
 
-.steps li + li {
-  margin-top: 0.35rem;
-}
-
-.steps strong {
-  color: var(--text);
-}
-
-.panel {
-  margin-top: 1.25rem;
-}
-
-.panel label,
-.panel h2 {
+.card {
   display: block;
-  margin: 0 0 0.5rem;
-  font-size: 0.85rem;
-  font-weight: 600;
-  color: var(--muted);
-  letter-spacing: 0.04em;
-}
-
-textarea {
-  width: 100%;
-  padding: 0.85rem 1rem;
+  padding: 1.25rem 1.35rem;
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background: var(--surface);
-  color: var(--text);
-  font-family: inherit;
-  font-size: 1.05rem;
-  line-height: 1.5;
-  resize: vertical;
+  color: inherit;
+  text-decoration: none;
+  transition: border-color 0.15s ease, transform 0.15s ease;
+}
+
+.card:hover,
+.card:focus-visible {
+  border-color: var(--accent);
   outline: none;
-  transition: border-color 0.15s ease;
 }
 
-textarea:focus {
-  border-color: var(--accent);
-}
-
-textarea[readonly] {
-  color: var(--muted);
-  cursor: default;
-}
-
-.hint {
-  margin: 0.5rem 0 0;
-  font-size: 0.8rem;
-  color: var(--muted);
-}
-
-.hint.warn {
-  color: var(--warn);
-}
-
-.hint.mono {
-  font-family: var(--mono);
-  font-size: 0.75rem;
-  word-break: break-all;
-}
-
-.actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.6rem;
-  margin-top: 1rem;
-}
-
-.btn {
-  appearance: none;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  padding: 0.65rem 1.25rem;
-  background: var(--surface);
-  color: var(--text);
-  font: inherit;
-  font-size: 0.95rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: background 0.15s ease, border-color 0.15s ease, opacity 0.15s ease;
-}
-
-.btn:hover:not(:disabled) {
-  border-color: var(--accent);
-}
-
-.btn:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
-}
-
-.btn.primary {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: #fff;
-}
-
-.btn.primary:hover:not(:disabled) {
-  background: var(--accent-hover);
-  border-color: var(--accent-hover);
-}
-
-.btn.ghost {
-  background: transparent;
-}
-
-.preview {
-  min-height: 3.5rem;
-  padding: 0.9rem 1rem;
-  border: 1px dashed var(--border);
-  border-radius: var(--radius);
-  background: #121820;
-  white-space: pre-wrap;
-  word-break: break-word;
+.card h2 {
+  margin: 0 0 0.4rem;
   font-size: 1.15rem;
-  line-height: 1.45;
+  font-weight: 700;
   color: var(--text);
 }
 
-.preview.empty {
+.card p {
+  margin: 0;
   color: var(--muted);
-  font-size: 0.95rem;
-}
-
-.status {
-  min-height: 1.4em;
-  margin: 0.5rem 0 0;
   font-size: 0.9rem;
-  color: var(--ok);
-  font-weight: 600;
 }
 
-.status.error {
-  color: #f4212e;
+.card-meta {
+  margin-top: 0.75rem !important;
+  font-size: 0.8rem !important;
+}
+
+.card code {
+  font-family: var(--mono);
+  font-size: 0.85em;
+  color: var(--accent);
 }
 
 .footer {
-  margin-top: 2rem;
+  margin-top: 2.5rem;
   padding-top: 1rem;
   border-top: 1px solid var(--border);
   font-size: 0.8rem;
   color: var(--muted);
 }
 
-.footer code {
-  font-family: var(--mono);
-  font-size: 0.85em;
-}
-
 @media (max-width: 480px) {
   .container {
-    width: min(100% - 1.25rem, 40rem);
-    padding-top: 1.25rem;
-  }
-
-  .btn {
-    flex: 1 1 auto;
-    text-align: center;
+    width: min(100% - 1.25rem, 42rem);
+    padding-top: 1.5rem;
   }
 }
