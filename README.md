@@ -7,7 +7,7 @@
 | URL | 内容 |
 |-----|------|
 | https://tools.kyg-style.com/ | ハブ（ツール一覧・日本語 UI） |
-| https://tools.kyg-style.com/改行ツール/ | X 表示名改行ツール |
+| https://tools.kyg-style.com/改行ツール/ | SNSアカウント名強制改行ツール |
 | https://tools.kyg-style.com/newline/ | 上記への ASCII エイリアス（リダイレクト） |
 
 ## リポジトリ構成
@@ -36,7 +36,7 @@ x-display-name-newline/   # リポジトリ名（履歴互換のためそのま�
 4. 共有しやすい ASCII パスが必要なら `ascii-name/index.html` で日本語パスへリダイレクトする
 5. `main` に push → GitHub Pages が自動デプロイ
 
-## X 表示名改行ツール
+## SNSアカウント名強制改行ツール
 
 [tools.ic731.net の改行ツール](https://tools.ic731.net/twitter/new_line/)と同様に、表示名の改行位置に Unicode **Line Separator（U+2028 / LSEP）** を入れ、結果をコピーして X の設定に貼り付けます。
 
