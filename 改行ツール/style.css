@@ -64,6 +64,28 @@ body {
   padding: var(--page-pad-y) 0 calc(var(--page-pad-y) + env(safe-area-inset-bottom, 0px));
 }
 
+.brand {
+  margin: 0 0 0.65rem;
+  font-size: clamp(0.75rem, 0.7rem + 0.2vw, 0.85rem);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+.home-link {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.home-link:hover,
+.home-link:focus-visible {
+  text-decoration: underline;
+  outline: none;
+}
+
+.footer-nav {
+  margin: 0 0 0.75rem;
+}
+
 .header h1 {
   margin: 0 0 0.35rem;
   font-size: clamp(1.3rem, 1.1rem + 1vw, 1.9rem);
