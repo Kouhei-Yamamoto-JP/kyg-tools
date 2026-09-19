@@ -38,7 +38,7 @@ x-display-name-newline/   # リポジトリ名（履歴互換のためそのま�
 
 ## SNSアカウント名強制改行ツール
 
-[tools.ic731.net の改行ツール](https://tools.ic731.net/twitter/new_line/)と同様に、表示名の改行位置に Unicode **Line Separator（U+2028 / LSEP）** を入れ、結果をコピーして X の設定に貼り付けます。
+SNSアカウント名の改行位置に Unicode **Line Separator（U+2028 / LSEP）** を入れ、結果をコピーして SNS の設定に貼り付けます。
 
 ### 使い方
 
