@@ -82,3 +82,20 @@ npx serve .
 ## アクセス解析
 
 GA4 測定ID `G-W0C7QYMWLX` を `analytics.js` 経由で全ページに読み込み。ページ別は GA の「レポート → エンゲージメント → ページとスクリーン」で確認。
+
+## コミット作者について（履歴書き換えの記録）
+
+2026-09-19 に、過去コミットの作者情報を **`Kouhei-Yamamoto-JP <263170478+Kouhei-Yamamoto-JP@users.noreply.github.com>`** に統一する履歴書き換え（force push）を行いました。
+
+### なぜ書き換えたか
+
+初期のコミットで、作者メールに **`kouhei@users.noreply.github.com`** を誤って指定していました。
+
+このアドレスは GitHub がアカウント用に用意する noreply 形式ですが、**ログイン名が `kouhei` の別人のアカウント**（表示名 Kohei Yamada / ZOZO, Inc.）に紐づくものです。勝手にメールを「作った」わけではなく、形式を真似して書いた結果、GitHub が別人の貢献として表示してしまいました。
+
+本リポジトリおよび関連作業の作者は **Kouhei-Yamamoto-JP** のみです。過去に Contributors に Kohei Yamada が見えていた場合は、上記の誤設定が原因です。
+
+### 外部から分かること
+
+- コミット SHA がすべて変わっています（履歴書き換えのため）
+- Contributors は書き換え後の作者に再集計されます（反映まで時間がかかることがあります）
