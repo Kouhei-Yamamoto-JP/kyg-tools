@@ -99,3 +99,7 @@ GA4 測定ID `G-W0C7QYMWLX` を `analytics.js` 経由で全ページに読み込
 
 - コミット SHA がすべて変わっています（履歴書き換えのため）
 - Contributors は書き換え後の作者に再集計されます（反映まで時間がかかることがあります）
+
+## リポジトリ名
+
+旧名 `x-display-name-newline` → **`kyg-tools`**（2026-09-21）。カスタムドメイン `tools.kyg-style.com` は変更なし。
