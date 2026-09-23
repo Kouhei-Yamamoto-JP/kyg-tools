@@ -217,7 +217,7 @@
       <p id="status" class="status" role="status" aria-live="polite">位置情報は端末内だけで使い、サーバには送りません。</p>
     </header>
     <div id="map" role="application" aria-label="地図"></div>
-    <p class="hint-bar" id="hint-bar">屋外推奨・HTTPS必須。標準はベクトル地図（向き合わせ時も地名が正立）。ドラッグで追従解除→「現在地を表示」で復帰。コンパス／北上でノースアップ。航空写真はラスタのため文字は傾きます。iPhoneはコンパス許可後。</p>
+    <p class="hint-bar" id="hint-bar">屋外推奨・HTTPS必須。標準はベクトル地図（向き合わせ時も地名が正立）。向き合わせ時: 静止はコンパス、移動開始後はGPS進行方向を優先。ドラッグで追従解除→「現在地を表示」で復帰。コンパス／北上でノースアップ。航空写真はラスタのため文字は傾きます。iPhoneはコンパス許可後。</p>
   </div>
 
   <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
@@ -254,6 +254,19 @@
   var IOS_BEARING_INVERT = false;
   var applyingProgrammaticMove = false;
 
+  // Heading-up: stationary → compass; moving → GPS course (hysteresis)
+  var MOTION_ENTER_MPS = 1.2;
+  var MOTION_EXIT_MPS = 0.6;
+  var MIN_COURSE_DIST_M = 4;
+  var MOTION_CONFIRM_N = 2;
+  var POS_HISTORY_MAX = 8;
+  var isMoving = false;
+  var motionEnterStreak = 0;
+  var motionExitStreak = 0;
+  var lastCompassHeading = null;
+  var lastGpsCourseDeg = null;
+  var posHistory = []; // {lng, lat, t}
+
   var IS_IOS = (function () {
     var ua = navigator.userAgent || '';
     if (/iPad|iPhone|iPod/.test(ua)) return true;
@@ -285,9 +298,16 @@
       msg += '・表示中';
     }
     if (followHeading && headingSource) {
-      msg += headingSource === 'device' ? '・端末の向きで回転中' : '・移動方向で回転中';
+      msg += headingSourceLabel();
     }
     statusWithHeading(msg, kind || (followLocation ? 'ok' : ''));
+  }
+
+  function headingSourceLabel() {
+    if (!followHeading || !headingSource) return '';
+    if (headingSource === 'device') return '・方位: コンパス';
+    if (headingSource === 'geo') return '・方位: GPS進行方向';
+    return '';
   }
 
   function shortestAngleDelta(from, to) {
@@ -296,6 +316,133 @@
 
   function normalizeDeg(d) {
     return ((d % 360) + 360) % 360;
+  }
+
+  function toRad(d) {
+    return (d * Math.PI) / 180;
+  }
+
+  function toDeg(r) {
+    return (r * 180) / Math.PI;
+  }
+
+  function haversineMeters(lng1, lat1, lng2, lat2) {
+    var R = 6371000;
+    var φ1 = toRad(lat1);
+    var φ2 = toRad(lat2);
+    var Δφ = toRad(lat2 - lat1);
+    var Δλ = toRad(lng2 - lng1);
+    var a =
+      Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
+      Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
+    return 2 * R * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  }
+
+  function bearingBetween(lng1, lat1, lng2, lat2) {
+    var φ1 = toRad(lat1);
+    var φ2 = toRad(lat2);
+    var Δλ = toRad(lng2 - lng1);
+    var y = Math.sin(Δλ) * Math.cos(φ2);
+    var x = Math.cos(φ1) * Math.sin(φ2) - Math.sin(φ1) * Math.cos(φ2) * Math.cos(Δλ);
+    return normalizeDeg(toDeg(Math.atan2(y, x)));
+  }
+
+  function pushPosHistory(lng, lat, t) {
+    posHistory.push({ lng: lng, lat: lat, t: t });
+    if (posHistory.length > POS_HISTORY_MAX) posHistory.shift();
+  }
+
+  function courseFromHistory() {
+    if (posHistory.length < 2) return null;
+    var newest = posHistory[posHistory.length - 1];
+    for (var i = posHistory.length - 2; i >= 0; i--) {
+      var p = posHistory[i];
+      var d = haversineMeters(p.lng, p.lat, newest.lng, newest.lat);
+      if (d >= MIN_COURSE_DIST_M) {
+        return bearingBetween(p.lng, p.lat, newest.lng, newest.lat);
+      }
+    }
+    return null;
+  }
+
+  function estimateSpeedMps() {
+    if (posHistory.length < 2) return null;
+    var a = posHistory[posHistory.length - 2];
+    var b = posHistory[posHistory.length - 1];
+    var dt = (b.t - a.t) / 1000;
+    if (!(dt > 0)) return null;
+    return haversineMeters(a.lng, a.lat, b.lng, b.lat) / dt;
+  }
+
+  function updateMotionState(speedMps) {
+    var spd = speedMps;
+    if (spd == null || Number.isNaN(spd) || spd < 0) {
+      spd = estimateSpeedMps();
+    }
+    if (spd == null || Number.isNaN(spd) || spd < 0) {
+      return isMoving;
+    }
+    if (!isMoving) {
+      if (spd >= MOTION_ENTER_MPS) {
+        motionEnterStreak++;
+        if (motionEnterStreak >= MOTION_CONFIRM_N) {
+          isMoving = true;
+          motionEnterStreak = 0;
+          motionExitStreak = 0;
+        }
+      } else {
+        motionEnterStreak = 0;
+      }
+    } else {
+      if (spd < MOTION_EXIT_MPS) {
+        motionExitStreak++;
+        if (motionExitStreak >= MOTION_CONFIRM_N) {
+          isMoving = false;
+          motionExitStreak = 0;
+          motionEnterStreak = 0;
+          lastGpsCourseDeg = null;
+        }
+      } else {
+        motionExitStreak = 0;
+      }
+    }
+    return isMoving;
+  }
+
+  function resolveGpsCourse(coords) {
+    var h = coords.heading;
+    if (h != null && !Number.isNaN(h) && h >= 0) {
+      lastGpsCourseDeg = normalizeDeg(h);
+      return lastGpsCourseDeg;
+    }
+    var cog = courseFromHistory();
+    if (cog != null) {
+      lastGpsCourseDeg = cog;
+      return cog;
+    }
+    return null;
+  }
+
+  /** Heading-up only: stationary → compass; moving → GPS course (fallback compass). */
+  function onMotionHeadingTick(coords) {
+    if (!followHeading) return;
+    if (isMoving) {
+      var course = resolveGpsCourse(coords);
+      if (course != null) {
+        headingSource = 'geo';
+        applyMapBearing(course);
+        return;
+      }
+      if (lastCompassHeading != null) {
+        headingSource = 'device';
+        applyMapBearing(lastCompassHeading);
+      }
+      return;
+    }
+    if (lastCompassHeading != null) {
+      headingSource = 'device';
+      applyMapBearing(lastCompassHeading);
+    }
   }
 
   function deviceOrientationAngle() {
@@ -441,7 +588,7 @@
         'ベクトル地図を読めなかったため国土地理院ラスタ標準にフォールバック中。ラベル正立は不可。屋外推奨・HTTPS必須。';
     } else {
       hintEl.textContent =
-        '標準: OpenFreeMap Liberty（OSMベクトル）。向き合わせ時も地名・記号は画面に対して正立。ドラッグで追従解除→「現在地を表示」で復帰。コンパス／北上でノースアップ。航空はラスタ。iPhoneはコンパス許可後。';
+        '標準: OpenFreeMap Liberty（OSMベクトル）。向き合わせ時も地名・記号は画面に対して正立。向き合わせ時: 静止はコンパス、移動開始後はGPS進行方向を優先。ドラッグで追従解除→「現在地を表示」で復帰。コンパス／北上でノースアップ。航空はラスタ。iPhoneはコンパス許可後。';
     }
   }
 
@@ -564,6 +711,8 @@
         headingSource = null;
         smoothedBearing = null;
         lastHeadingDeg = null;
+        lastCompassHeading = null;
+        lastGpsCourseDeg = null;
         btnNorth.disabled = true;
         setStatus('コンパスで北上に戻しました。' + (followLocation ? '・現在地を追従中' : '・地図操作中（現在地で復帰）'), 'ok');
       });
@@ -596,19 +745,19 @@
     var msg = followStatusBase();
     if (acc != null) msg += '（精度 約' + acc + ' m）';
     if (followHeading && headingSource) {
-      msg += headingSource === 'device' ? '・端末の向きで回転中' : '・移動方向で回転中';
+      msg += headingSourceLabel();
     }
     statusWithHeading(msg, followLocation ? 'ok' : '');
   }
 
   function onGeoSuccess(pos) {
-    applyPosition(pos.coords);
-    if (followHeading && pos.coords.heading != null && !Number.isNaN(pos.coords.heading) && pos.coords.heading >= 0) {
-      if (headingSource !== 'device') {
-        headingSource = 'geo';
-        applyMapBearing(pos.coords.heading);
-      }
+    var coords = pos.coords;
+    pushPosHistory(coords.longitude, coords.latitude, Date.now());
+    updateMotionState(coords.speed);
+    if (followHeading) {
+      onMotionHeadingTick(coords);
     }
+    applyPosition(coords);
   }
 
   function onGeoError(err) {
@@ -670,15 +819,19 @@
     smoothedBearing = null;
     lastBearingApplyAt = 0;
     lastHeadingDeg = null;
+    lastCompassHeading = null;
+    lastGpsCourseDeg = null;
     var got = false;
     orientHandler = function (e) {
       var h = compassHeadingFromEvent(e);
       if (h == null) return;
       got = true;
+      lastCompassHeading = h;
+      if (!followHeading) return;
+      // Moving with valid GPS course: do not let compass override
+      if (isMoving && lastGpsCourseDeg != null) return;
       headingSource = 'device';
-      if (followHeading) {
-        applyMapBearing(h);
-      }
+      applyMapBearing(h);
     };
     if (IS_IOS) {
       window.addEventListener('deviceorientation', orientHandler, true);
@@ -702,7 +855,7 @@
         if (!got && followHeading) {
           setStatus('端末の向きが取れません。移動中なら GPS の進行方向を使います。取れない場合は北上のままです。', 'error');
         } else if (followHeading && got) {
-          statusWithHeading(followStatusBase() + '・向きに合わせて回転中', 'ok');
+          statusWithHeading(followStatusBase() + headingSourceLabel() + '・向き合わせ中', 'ok');
           btnNorth.disabled = false;
         }
       }, 2500);
@@ -724,6 +877,8 @@
     headingSource = null;
     smoothedBearing = null;
     lastHeadingDeg = null;
+    lastCompassHeading = null;
+    lastGpsCourseDeg = null;
     btnNorth.disabled = true;
     setStatus('北上（画面上＝北）に戻しました。・' + followStatusBase(), 'ok');
   }
@@ -749,12 +904,14 @@
     if (followHeading) {
       btnNorth.disabled = false;
       startOrientation();
-      setStatus('向きを合わせるモードです。センサーまたは移動方向を待ちます…・' + followStatusBase());
+      setStatus('向き合わせモード（静止=コンパス／移動=GPS進行方向）。センサー待ち…・' + followStatusBase());
     } else {
       stopOrientation();
       headingSource = null;
       smoothedBearing = null;
       lastHeadingDeg = null;
+      lastCompassHeading = null;
+      lastGpsCourseDeg = null;
       withProgrammaticMove(function () {
         map.easeTo({ bearing: 0, duration: 400 });
       });
