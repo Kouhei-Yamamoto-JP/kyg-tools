@@ -11,12 +11,12 @@
   <meta property="og:type" content="website">
   <meta property="og:site_name" content="KYG Style Tools">
   <meta property="og:title" content="駐車場ナビ試し（現在地）">
-  <meta property="og:description" content="Android Chrome向け。現在地を地図中央に、向き合わせトグル付き。">
+  <meta property="og:description" content="現在地を地図中央に。iPhoneはコンパス許可後。ずれたら北上に戻す。向き合わせトグル付き。">
   <meta property="og:url" content="https://tools.kyg-style.com/parking-nav-demo/">
   <meta property="og:image" content="https://raw.githubusercontent.com/Kouhei-Yamamoto-JP/x-display-name-newline/main/og.png">
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="駐車場ナビ試し（現在地）">
-  <meta name="twitter:description" content="Android Chrome向け。現在地を地図中央に、向き合わせトグル付き。">
+  <meta name="twitter:description" content="現在地を地図中央に。iPhoneはコンパス許可後。ずれたら北上に戻す。向き合わせトグル付き。">
   <meta name="twitter:image" content="https://raw.githubusercontent.com/Kouhei-Yamamoto-JP/x-display-name-newline/main/og.png">
   <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css">
   <script async src="https://www.googletagmanager.com/gtag/js?id=G-W0C7QYMWLX"></script>
@@ -176,7 +176,7 @@
       <p id="status" class="status" role="status" aria-live="polite">位置情報は端末内だけで使い、サーバには送りません。</p>
     </header>
     <div id="map" role="application" aria-label="地図"></div>
-    <p class="hint-bar">屋外推奨・HTTPS必須。コンパスは Android Chrome 向け。地図: 国土地理院</p>
+    <p class="hint-bar">屋外推奨・HTTPS必須。iPhoneはコンパス許可後。ずれたら北上に戻す。地図: 国土地理院</p>
   </div>
 
   <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
@@ -195,10 +195,70 @@
   var lastPos = null;
   var followHeading = false;
   var headingSource = null; // 'device' | 'geo' | null
+  var lastHeadingDeg = null;
+  var smoothedBearing = null;
+  var lastBearingApplyAt = 0;
+  var BEARING_THROTTLE_MS = 120;
+  // iOS: MapLibre が CCW で食い違う場合は true にすると mapBearing = (360 - h) % 360
+  var IOS_BEARING_INVERT = false;
+
+  var IS_IOS = (function () {
+    var ua = navigator.userAgent || '';
+    if (/iPad|iPhone|iPod/.test(ua)) return true;
+    // iPadOS 13+ may report as Mac
+    if (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1) return true;
+    return false;
+  })();
 
   function setStatus(msg, kind) {
     statusEl.textContent = msg;
     statusEl.className = 'status' + (kind ? ' ' + kind : '');
+  }
+
+  function statusWithHeading(base, kind) {
+    var msg = base;
+    if (lastHeadingDeg != null && !Number.isNaN(lastHeadingDeg)) {
+      msg += '・向き ' + Math.round(lastHeadingDeg) + '°';
+    }
+    setStatus(msg, kind);
+  }
+
+  function shortestAngleDelta(from, to) {
+    var d = ((to - from + 540) % 360) - 180;
+    return d;
+  }
+
+  function normalizeDeg(d) {
+    return ((d % 360) + 360) % 360;
+  }
+
+  function deviceOrientationAngle() {
+    if (typeof window.orientation === 'number') return window.orientation;
+    if (screen.orientation && typeof screen.orientation.angle === 'number') {
+      return screen.orientation.angle;
+    }
+    return 0;
+  }
+
+  function applyMapBearing(heading) {
+    var h = normalizeDeg(heading);
+    lastHeadingDeg = h;
+    if (IS_IOS && IOS_BEARING_INVERT) {
+      // fallback: mapBearing = (360 - heading) % 360
+      h = normalizeDeg(360 - h);
+    }
+    var now = Date.now();
+    if (smoothedBearing == null) {
+      smoothedBearing = h;
+    } else {
+      var delta = shortestAngleDelta(smoothedBearing, h);
+      // 簡易スムージング（短距離の角度差で補間）
+      smoothedBearing = normalizeDeg(smoothedBearing + delta * 0.35);
+    }
+    if (now - lastBearingApplyAt < BEARING_THROTTLE_MS) return;
+    lastBearingApplyAt = now;
+    map.setBearing(smoothedBearing);
+    btnNorth.disabled = false;
   }
 
   function geoErrorMessage(err) {
@@ -275,7 +335,7 @@
     if (followHeading && headingSource) {
       msg += headingSource === 'device' ? '・端末の向きで回転中' : '・移動方向で回転中';
     }
-    setStatus(msg, 'ok');
+    statusWithHeading(msg, 'ok');
   }
 
   function onGeoSuccess(pos) {
@@ -283,8 +343,7 @@
     if (followHeading && pos.coords.heading != null && !Number.isNaN(pos.coords.heading) && pos.coords.heading >= 0) {
       if (headingSource !== 'device') {
         headingSource = 'geo';
-        map.easeTo({ bearing: pos.coords.heading, duration: 300 });
-        btnNorth.disabled = false;
+        applyMapBearing(pos.coords.heading);
       }
     }
   }
@@ -319,15 +378,21 @@
   }
 
   function compassHeadingFromEvent(e) {
-    // Android: absolute alpha ≈ compass heading (0=north, clockwise)
-    if (e.absolute === true && e.alpha != null && !Number.isNaN(e.alpha)) {
-      return (360 - e.alpha) % 360;
+    // iOS/iPadOS: always prefer webkitCompassHeading; ignore absolute/alpha
+    var useWebkit = typeof e.webkitCompassHeading === 'number' && !Number.isNaN(e.webkitCompassHeading);
+    if (useWebkit || IS_IOS) {
+      if (!useWebkit) return null;
+      var h = e.webkitCompassHeading;
+      // ポートレート／ランドスケープ補正
+      h = normalizeDeg(h + deviceOrientationAngle());
+      return h;
     }
-    if (typeof e.webkitCompassHeading === 'number' && !Number.isNaN(e.webkitCompassHeading)) {
-      return e.webkitCompassHeading;
+    // Android only: absolute alpha → compass (0=north, clockwise)
+    if (e.absolute === true && e.alpha != null && !Number.isNaN(e.alpha)) {
+      return normalizeDeg(360 - e.alpha);
     }
     if (e.alpha != null && !Number.isNaN(e.alpha)) {
-      return (360 - e.alpha) % 360;
+      return normalizeDeg(360 - e.alpha);
     }
     return null;
   }
@@ -335,6 +400,9 @@
   function startOrientation() {
     stopOrientation();
     headingSource = null;
+    smoothedBearing = null;
+    lastBearingApplyAt = 0;
+    lastHeadingDeg = null;
     var got = false;
     orientHandler = function (e) {
       var h = compassHeadingFromEvent(e);
@@ -342,15 +410,17 @@
       got = true;
       headingSource = 'device';
       if (followHeading) {
-        map.setBearing(h);
-        btnNorth.disabled = false;
+        applyMapBearing(h);
       }
     };
-    // Prefer absolute orientation when available
-    window.addEventListener('deviceorientationabsolute', orientHandler, true);
-    window.addEventListener('deviceorientation', orientHandler, true);
+    // iOS: deviceorientation (webkitCompassHeading). Android: absolute first.
+    if (IS_IOS) {
+      window.addEventListener('deviceorientation', orientHandler, true);
+    } else {
+      window.addEventListener('deviceorientationabsolute', orientHandler, true);
+      window.addEventListener('deviceorientation', orientHandler, true);
+    }
 
-    // Permission API (Android Chrome may support)
     var tryPerm = Promise.resolve();
     if (typeof DeviceOrientationEvent !== 'undefined' &&
         typeof DeviceOrientationEvent.requestPermission === 'function') {
@@ -366,7 +436,7 @@
         if (!got && followHeading) {
           setStatus('端末の向きが取れません。移動中なら GPS の進行方向を使います。取れない場合は北上のままです。', 'error');
         } else if (followHeading && got) {
-          setStatus('向きに合わせて地図を回転しています。', 'ok');
+          statusWithHeading('向きに合わせて地図を回転しています', 'ok');
           btnNorth.disabled = false;
         }
       }, 2500);
@@ -384,6 +454,8 @@
     toggleHeading.checked = false;
     stopOrientation();
     headingSource = null;
+    smoothedBearing = null;
+    lastHeadingDeg = null;
     btnNorth.disabled = true;
     setStatus('北上（画面上＝北）に戻しました。', 'ok');
   }
@@ -405,6 +477,8 @@
     } else {
       stopOrientation();
       headingSource = null;
+      smoothedBearing = null;
+      lastHeadingDeg = null;
       map.easeTo({ bearing: 0, duration: 400 });
       btnNorth.disabled = true;
       setStatus('北上に戻しました。', 'ok');
