@@ -6,17 +6,17 @@
   <meta name="color-scheme" content="light dark">
   <meta name="theme-color" content="#0f1419" media="(prefers-color-scheme: dark)">
   <meta name="theme-color" content="#f4f7fb" media="(prefers-color-scheme: light)">
-  <meta name="description" content="現在地を地図中央に表示する駐車場ナビの試しデモ。MapLibre＋OpenFreeMapベクトル（ラベル正立）。">
+  <meta name="description" content="現在地を地図中央に表示する駐車場ナビの試しデモ。MapLibre＋OpenFreeMapベクトル（ラベル正立）。航空写真は国土地理院写真＋正立地名＋建物3Dハイブリッド。">
   <title>駐車場ナビ試し（現在地）</title>
   <meta property="og:type" content="website">
   <meta property="og:site_name" content="KYG Style Tools">
   <meta property="og:title" content="駐車場ナビ試し（現在地）">
-  <meta property="og:description" content="ベクトル地図で向き合わせ時も地名が正立。現在地追従・航空写真・立体表示対応。">
+  <meta property="og:description" content="ベクトル地図で向き合わせ時も地名が正立。航空写真は写真＋正立ベクトル地名＋建物3D。現在地追従・立体表示対応。">
   <meta property="og:url" content="https://tools.kyg-style.com/parking-nav-demo/">
   <meta property="og:image" content="https://raw.githubusercontent.com/Kouhei-Yamamoto-JP/x-display-name-newline/main/og.png">
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="駐車場ナビ試し（現在地）">
-  <meta name="twitter:description" content="ベクトル地図で向き合わせ時も地名が正立。現在地追従・航空写真・立体表示対応。">
+  <meta name="twitter:description" content="ベクトル地図で向き合わせ時も地名が正立。航空写真は写真＋正立ベクトル地名＋建物3D。現在地追従・立体表示対応。">
   <meta name="twitter:image" content="https://raw.githubusercontent.com/Kouhei-Yamamoto-JP/x-display-name-newline/main/og.png">
   <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css">
   <script async src="https://www.googletagmanager.com/gtag/js?id=G-W0C7QYMWLX"></script>
@@ -217,7 +217,7 @@
       <p id="status" class="status" role="status" aria-live="polite">位置情報は端末内だけで使い、サーバには送りません。</p>
     </header>
     <div id="map" role="application" aria-label="地図"></div>
-    <p class="hint-bar" id="hint-bar">屋外推奨・HTTPS必須。標準はベクトル地図（向き合わせ時も地名が正立）。向き合わせ時: 静止はコンパス、移動開始後はGPS進行方向を優先。ドラッグで追従解除→「現在地を表示」で復帰。コンパス／北上でノースアップ。航空写真はラスタのため文字は傾きます。iPhoneはコンパス許可後。</p>
+    <p class="hint-bar" id="hint-bar">屋外推奨・HTTPS必須。標準はベクトル地図（向き合わせ時も地名が正立）。向き合わせ時: 静止はコンパス、移動開始後はGPS進行方向を優先。ドラッグで追従解除→「現在地を表示」で復帰。コンパス／北上でノースアップ。航空写真は国土地理院写真＋正立ベクトル地名＋建物3D。iPhoneはコンパス許可後。</p>
   </div>
 
   <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
@@ -245,6 +245,9 @@
   var followLocation = true;
   var basemap = 'vector'; // 'vector' | 'photo'
   var vectorStyleFailed = false;
+  var photoHybridFailed = false;
+  var libertyStyleCache = null;
+  var libertyStylePromise = null;
   var headingSource = null; // 'device' | 'geo' | null
   var lastHeadingDeg = null;
   var smoothedBearing = null;
@@ -527,6 +530,138 @@
     };
   }
 
+  function fetchLibertyStyle() {
+    if (libertyStyleCache) return Promise.resolve(libertyStyleCache);
+    if (libertyStylePromise) return libertyStylePromise;
+    libertyStylePromise = fetch(VECTOR_STYLE_URL)
+      .then(function (res) {
+        if (!res.ok) throw new Error('liberty style HTTP ' + res.status);
+        return res.json();
+      })
+      .then(function (json) {
+        libertyStyleCache = json;
+        libertyStylePromise = null;
+        return json;
+      })
+      .catch(function (err) {
+        libertyStylePromise = null;
+        throw err;
+      });
+    return libertyStylePromise;
+  }
+
+  function isRoadRelatedLineId(id) {
+    var s = String(id || '').toLowerCase();
+    return /road|highway|bridge|tunnel|path|railway|rail|motorway|street|service_track|link|transit/.test(s);
+  }
+
+  function isDarkColor(color) {
+    if (typeof color !== 'string') return false;
+    var c = color.trim().toLowerCase();
+    var hex = c.match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i);
+    if (hex) {
+      var h = hex[1];
+      var r, g, b;
+      if (h.length === 3) {
+        r = parseInt(h[0] + h[0], 16);
+        g = parseInt(h[1] + h[1], 16);
+        b = parseInt(h[2] + h[2], 16);
+      } else {
+        r = parseInt(h.slice(0, 2), 16);
+        g = parseInt(h.slice(2, 4), 16);
+        b = parseInt(h.slice(4, 6), 16);
+      }
+      return (0.299 * r + 0.587 * g + 0.114 * b) / 255 < 0.55;
+    }
+    var hsl = c.match(/^hsla?\(\s*([\d.]+)\s*,\s*([\d.]+)%\s*,\s*([\d.]+)%/);
+    if (hsl) return parseFloat(hsl[3]) < 55;
+    return c === 'black' || c === 'gray' || c === 'grey' || c === 'dimgray' || c === 'dimgrey';
+  }
+
+  function strengthenSymbolForPhoto(layer) {
+    var out = JSON.parse(JSON.stringify(layer));
+    var layout = out.layout || {};
+    if (layout['text-field'] == null) return out; // icon-only: leave alone
+    var paint = out.paint = out.paint || {};
+    if (isDarkColor(paint['text-color'])) {
+      paint['text-color'] = '#ffffff';
+      paint['text-halo-color'] = '#000000';
+      var hw = paint['text-halo-width'];
+      if (hw == null || (typeof hw === 'number' && hw < 1.2)) {
+        paint['text-halo-width'] = 1.4;
+      }
+    }
+    return out;
+  }
+
+  function buildPhotoHybridStyle() {
+    return fetchLibertyStyle().then(function (liberty) {
+      var sources = {};
+      if (liberty.sources && liberty.sources.openmaptiles) {
+        sources.openmaptiles = JSON.parse(JSON.stringify(liberty.sources.openmaptiles));
+      }
+      sources['gsi-seamlessphoto'] = {
+        type: 'raster',
+        tiles: [
+          'https://cyberjapandata.gsi.go.jp/xyz/seamlessphoto/{z}/{x}/{y}.jpg'
+        ],
+        tileSize: 256,
+        attribution:
+          '<a href="https://maps.gsi.go.jp/development/ichiran.html" target="_blank" rel="noopener">国土地理院</a>',
+        maxzoom: 18
+      };
+
+      var roadLines = [];
+      var building3d = null;
+      var symbols = [];
+
+      (liberty.layers || []).forEach(function (layer) {
+        var t = layer.type;
+        if (t === 'background' || t === 'fill' || t === 'raster') return;
+        if (t === 'line') {
+          if (isRoadRelatedLineId(layer.id)) {
+            roadLines.push(JSON.parse(JSON.stringify(layer)));
+          }
+          return;
+        }
+        if (t === 'fill-extrusion' && layer.id === 'building-3d') {
+          building3d = JSON.parse(JSON.stringify(layer));
+          building3d.paint = building3d.paint || {};
+          var op = building3d.paint['fill-extrusion-opacity'];
+          if (op == null || (typeof op === 'number' && op < 0.6)) {
+            building3d.paint['fill-extrusion-opacity'] = 0.7;
+          }
+          return;
+        }
+        if (t === 'symbol') {
+          symbols.push(strengthenSymbolForPhoto(layer));
+        }
+      });
+
+      var layers = [
+        {
+          id: 'gsi-seamlessphoto',
+          type: 'raster',
+          source: 'gsi-seamlessphoto',
+          minzoom: 0,
+          maxzoom: 22
+        }
+      ];
+      layers = layers.concat(roadLines);
+      if (building3d) layers.push(building3d);
+      layers = layers.concat(symbols);
+
+      return {
+        version: 8,
+        name: 'gsi-photo-hybrid',
+        glyphs: liberty.glyphs,
+        sprite: liberty.sprite,
+        sources: sources,
+        layers: layers
+      };
+    });
+  }
+
   function gsiStdFallbackStyle() {
     return {
       version: 8,
@@ -556,7 +691,13 @@
 
   /** Point labels upright when map rotates; keep line labels map-aligned for roads. */
   function applyLabelUpright() {
-    if (basemap !== 'vector' || vectorStyleFailed) return;
+    if (basemap === 'vector') {
+      if (vectorStyleFailed) return;
+    } else if (basemap === 'photo') {
+      if (photoHybridFailed) return;
+    } else {
+      return;
+    }
     var style = map.getStyle();
     if (!style || !style.layers) return;
     style.layers.forEach(function (layer) {
@@ -581,14 +722,19 @@
 
   function updateHint() {
     if (basemap === 'photo') {
-      hintEl.textContent =
-        '航空写真（国土地理院 seamlessphoto・ラスタ）。焼き込み文字は地図回転で傾きます。標準（ベクトル）に戻すと地名が正立します。ドラッグで追従解除→「現在地を表示」で復帰。';
+      if (photoHybridFailed) {
+        hintEl.textContent =
+          '航空写真（国土地理院 seamlessphoto）。地名ベクトルを読めなかったため写真のみ（文字は焼き込み・傾く場合あり）。標準に戻すと正立ラベル。ドラッグで追従解除→「現在地を表示」で復帰。';
+      } else {
+        hintEl.textContent =
+          '航空写真: 国土地理院写真＋OpenFreeMap地名（向き合わせ時も正立）＋建物3D。立体ONでpitch連動。ドラッグで追従解除→「現在地を表示」で復帰。';
+      }
     } else if (vectorStyleFailed) {
       hintEl.textContent =
         'ベクトル地図を読めなかったため国土地理院ラスタ標準にフォールバック中。ラベル正立は不可。屋外推奨・HTTPS必須。';
     } else {
       hintEl.textContent =
-        '標準: OpenFreeMap Liberty（OSMベクトル）。向き合わせ時も地名・記号は画面に対して正立。向き合わせ時: 静止はコンパス、移動開始後はGPS進行方向を優先。ドラッグで追従解除→「現在地を表示」で復帰。コンパス／北上でノースアップ。航空はラスタ。iPhoneはコンパス許可後。';
+        '標準: OpenFreeMap Liberty（OSMベクトル）。向き合わせ時も地名・記号は画面に対して正立。向き合わせ時: 静止はコンパス、移動開始後はGPS進行方向を優先。ドラッグで追従解除→「現在地を表示」で復帰。コンパス／北上でノースアップ。航空は写真＋正立地名＋建物3D。iPhoneはコンパス許可後。';
     }
   }
 
@@ -621,24 +767,51 @@
     btnBaseVector.setAttribute('aria-pressed', mode === 'vector' ? 'true' : 'false');
     btnBasePhoto.setAttribute('aria-pressed', mode === 'photo' ? 'true' : 'false');
 
-    var styleSpec = mode === 'photo'
-      ? photoStyle()
-      : (vectorStyleFailed ? gsiStdFallbackStyle() : VECTOR_STYLE_URL);
-
-    map.once('style.load', function () {
+    function afterStyleLoad() {
       restoreCamera(cam);
-      if (mode === 'vector' && !vectorStyleFailed) {
-        applyLabelUpright();
-      }
+      applyLabelUpright();
       updateHint();
       if (followLocation && lastPos) {
         withProgrammaticMove(function () {
           map.setCenter(lastPos);
         });
       }
-    });
+    }
 
-    if (mode === 'vector' && !vectorStyleFailed) {
+    if (mode === 'photo') {
+      setStatus('航空写真ハイブリッド（地名・建物3D）を読込中…');
+      updateHint();
+      buildPhotoHybridStyle()
+        .then(function (styleSpec) {
+          if (basemap !== 'photo') return;
+          photoHybridFailed = false;
+          map.once('style.load', afterStyleLoad);
+          withProgrammaticMove(function () {
+            map.setStyle(styleSpec, { diff: false });
+          });
+          updateHint();
+          if (lastPos) refreshLocationStatus('ok');
+          else setStatus('航空写真ハイブリッドを表示中。', 'ok');
+        })
+        .catch(function () {
+          if (basemap !== 'photo') return;
+          photoHybridFailed = true;
+          setStatus('航空写真の地名レイヤを読めませんでした。写真のみ表示します。', 'error');
+          map.once('style.load', afterStyleLoad);
+          withProgrammaticMove(function () {
+            map.setStyle(photoStyle(), { diff: false });
+          });
+          updateHint();
+        });
+      return;
+    }
+
+    photoHybridFailed = false;
+    var styleSpec = vectorStyleFailed ? gsiStdFallbackStyle() : VECTOR_STYLE_URL;
+
+    map.once('style.load', afterStyleLoad);
+
+    if (!vectorStyleFailed) {
       // Detect style fetch failure
       var failed = false;
       var onError = function (e) {
@@ -966,9 +1139,7 @@
   });
 
   map.on('style.load', function () {
-    if (basemap === 'vector' && !vectorStyleFailed) {
-      applyLabelUpright();
-    }
+    applyLabelUpright();
   });
 
   window.addEventListener('beforeunload', function () {
