@@ -1,0 +1,426 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <meta name="color-scheme" content="light dark">
+  <meta name="theme-color" content="#0f1419" media="(prefers-color-scheme: dark)">
+  <meta name="theme-color" content="#f4f7fb" media="(prefers-color-scheme: light)">
+  <meta name="description" content="現在地を地図中央に表示する駐車場ナビの試しデモ。MapLibre＋国土地理院タイル。">
+  <title>駐車場ナビ試し（現在地）</title>
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="KYG Style Tools">
+  <meta property="og:title" content="駐車場ナビ試し（現在地）">
+  <meta property="og:description" content="Android Chrome向け。現在地を地図中央に、向き合わせトグル付き。">
+  <meta property="og:url" content="https://tools.kyg-style.com/parking-nav-demo/">
+  <meta property="og:image" content="https://raw.githubusercontent.com/Kouhei-Yamamoto-JP/x-display-name-newline/main/og.png">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="駐車場ナビ試し（現在地）">
+  <meta name="twitter:description" content="Android Chrome向け。現在地を地図中央に、向き合わせトグル付き。">
+  <meta name="twitter:image" content="https://raw.githubusercontent.com/Kouhei-Yamamoto-JP/x-display-name-newline/main/og.png">
+  <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css">
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-W0C7QYMWLX"></script>
+  <script src="/analytics.js"></script>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg: #0f1419;
+      --surface: #1a2332;
+      --border: #2f3b4d;
+      --text: #e7ecf3;
+      --muted: #8b9bb4;
+      --accent: #1d9bf0;
+      --accent-hover: #1a8cd8;
+      --danger: #f4212e;
+      --radius: 12px;
+      --font: system-ui, -apple-system, "Segoe UI", "Hiragino Sans", "Noto Sans JP", sans-serif;
+    }
+    @media (prefers-color-scheme: light) {
+      :root {
+        --bg: #f4f7fb;
+        --surface: #ffffff;
+        --border: #d0d7e2;
+        --text: #0f1419;
+        --muted: #5b6b82;
+        --accent: #1a8cd8;
+        --accent-hover: #1577b8;
+      }
+    }
+    *, *::before, *::after { box-sizing: border-box; }
+    html, body {
+      margin: 0;
+      height: 100%;
+      font-family: var(--font);
+      background: var(--bg);
+      color: var(--text);
+      overflow: hidden;
+    }
+    .app {
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+      height: 100dvh;
+    }
+    .topbar {
+      flex: 0 0 auto;
+      padding: 0.65rem 0.85rem calc(0.55rem + env(safe-area-inset-top, 0px));
+      padding-top: max(0.65rem, env(safe-area-inset-top, 0px));
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      z-index: 2;
+    }
+    .brand {
+      margin: 0 0 0.25rem;
+      font-size: 0.75rem;
+      font-weight: 600;
+      letter-spacing: 0.06em;
+    }
+    .brand a {
+      color: var(--accent);
+      text-decoration: none;
+    }
+    .brand a:hover { text-decoration: underline; }
+    .topbar h1 {
+      margin: 0 0 0.45rem;
+      font-size: 1.05rem;
+      font-weight: 700;
+      line-height: 1.3;
+    }
+    .controls {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.45rem;
+      align-items: center;
+    }
+    .btn {
+      appearance: none;
+      border: 1px solid var(--border);
+      background: var(--bg);
+      color: var(--text);
+      border-radius: 8px;
+      padding: 0.45rem 0.75rem;
+      font: inherit;
+      font-size: 0.85rem;
+      font-weight: 600;
+      cursor: pointer;
+      min-height: 40px;
+    }
+    .btn:hover, .btn:focus-visible {
+      border-color: var(--accent);
+      outline: none;
+    }
+    .btn.primary {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #fff;
+    }
+    .btn.primary:hover { background: var(--accent-hover); }
+    .btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    .toggle {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      font-size: 0.85rem;
+      font-weight: 600;
+      cursor: pointer;
+      user-select: none;
+      padding: 0.35rem 0.5rem;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      min-height: 40px;
+    }
+    .toggle input { width: 1.05rem; height: 1.05rem; accent-color: var(--accent); }
+    .status {
+      margin: 0.45rem 0 0;
+      font-size: 0.8rem;
+      color: var(--muted);
+      min-height: 1.2em;
+    }
+    .status.error { color: var(--danger); }
+    .status.ok { color: var(--accent); }
+    #map {
+      flex: 1 1 auto;
+      min-height: 0;
+      width: 100%;
+      position: relative;
+    }
+    .maplibregl-ctrl-attrib {
+      font-size: 10px !important;
+    }
+    .hint-bar {
+      flex: 0 0 auto;
+      padding: 0.4rem 0.85rem calc(0.5rem + env(safe-area-inset-bottom, 0px));
+      font-size: 0.75rem;
+      color: var(--muted);
+      background: var(--surface);
+      border-top: 1px solid var(--border);
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header class="topbar">
+      <p class="brand"><a href="/">← tools.kyg-style.com</a></p>
+      <h1>駐車場ナビ試し（現在地）</h1>
+      <div class="controls">
+        <button type="button" id="btn-locate" class="btn primary">現在地を表示</button>
+        <label class="toggle" for="toggle-heading">
+          <input type="checkbox" id="toggle-heading">
+          向きを合わせる
+        </label>
+        <button type="button" id="btn-north" class="btn" disabled>北上に戻す</button>
+      </div>
+      <p id="status" class="status" role="status" aria-live="polite">位置情報は端末内だけで使い、サーバには送りません。</p>
+    </header>
+    <div id="map" role="application" aria-label="地図"></div>
+    <p class="hint-bar">屋外推奨・HTTPS必須。コンパスは Android Chrome 向け。地図: 国土地理院</p>
+  </div>
+
+  <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+  <script>
+(function () {
+  'use strict';
+
+  var TOKYO = [139.7671, 35.6812];
+  var statusEl = document.getElementById('status');
+  var btnLocate = document.getElementById('btn-locate');
+  var btnNorth = document.getElementById('btn-north');
+  var toggleHeading = document.getElementById('toggle-heading');
+
+  var watchId = null;
+  var orientHandler = null;
+  var lastPos = null;
+  var followHeading = false;
+  var headingSource = null; // 'device' | 'geo' | null
+
+  function setStatus(msg, kind) {
+    statusEl.textContent = msg;
+    statusEl.className = 'status' + (kind ? ' ' + kind : '');
+  }
+
+  function geoErrorMessage(err) {
+    if (!err) return '位置情報を取得できませんでした。';
+    switch (err.code) {
+      case 1:
+        return '位置情報の許可が拒否されました。ブラウザのサイト設定で許可してください。';
+      case 2:
+        return '位置を特定できませんでした。屋外やGPSが使える場所で試してください。';
+      case 3:
+        return '位置情報の取得がタイムアウトしました。もう一度お試しください。';
+      default:
+        return '位置情報エラー: ' + (err.message || String(err.code || '不明'));
+    }
+  }
+
+  var map = new maplibregl.Map({
+    container: 'map',
+    style: {
+      version: 8,
+      sources: {
+        gsi: {
+          type: 'raster',
+          tiles: [
+            'https://cyberjapandata.gsi.go.jp/xyz/std/{z}/{x}/{y}.png'
+          ],
+          tileSize: 256,
+          attribution: '<a href="https://maps.gsi.go.jp/development/ichiran.html" target="_blank" rel="noopener">国土地理院</a>',
+          maxzoom: 18
+        }
+      },
+      layers: [
+        {
+          id: 'gsi-std',
+          type: 'raster',
+          source: 'gsi',
+          minzoom: 0,
+          maxzoom: 22
+        }
+      ]
+    },
+    center: TOKYO,
+    zoom: 15,
+    bearing: 0,
+    pitch: 0,
+    attributionControl: true,
+    hash: false
+  });
+
+  map.addControl(new maplibregl.NavigationControl({ showCompass: true, visualizePitch: false }), 'top-right');
+  map.addControl(new maplibregl.ScaleControl({ maxWidth: 120, unit: 'metric' }), 'bottom-left');
+
+  var markerEl = document.createElement('div');
+  markerEl.setAttribute('aria-hidden', 'true');
+  markerEl.style.cssText =
+    'width:18px;height:18px;border-radius:50%;background:#1d9bf0;' +
+    'border:3px solid #fff;box-shadow:0 0 0 2px rgba(29,155,240,0.45),0 1px 4px rgba(0,0,0,0.35);';
+
+  var marker = new maplibregl.Marker({ element: markerEl, rotationAlignment: 'map', pitchAlignment: 'map' })
+    .setLngLat(TOKYO)
+    .addTo(map);
+
+  function applyPosition(coords) {
+    var lng = coords.longitude;
+    var lat = coords.latitude;
+    lastPos = [lng, lat];
+    marker.setLngLat(lastPos);
+    var opts = { center: lastPos, duration: 600 };
+    if (!followHeading) opts.bearing = 0;
+    map.easeTo(opts);
+    var acc = coords.accuracy != null ? Math.round(coords.accuracy) : null;
+    var msg = '現在地を表示中';
+    if (acc != null) msg += '（精度 約' + acc + ' m）';
+    if (followHeading && headingSource) {
+      msg += headingSource === 'device' ? '・端末の向きで回転中' : '・移動方向で回転中';
+    }
+    setStatus(msg, 'ok');
+  }
+
+  function onGeoSuccess(pos) {
+    applyPosition(pos.coords);
+    if (followHeading && pos.coords.heading != null && !Number.isNaN(pos.coords.heading) && pos.coords.heading >= 0) {
+      if (headingSource !== 'device') {
+        headingSource = 'geo';
+        map.easeTo({ bearing: pos.coords.heading, duration: 300 });
+        btnNorth.disabled = false;
+      }
+    }
+  }
+
+  function onGeoError(err) {
+    setStatus(geoErrorMessage(err), 'error');
+  }
+
+  function startLocate() {
+    if (!navigator.geolocation) {
+      setStatus('このブラウザは Geolocation に対応していません。', 'error');
+      return;
+    }
+    setStatus('現在地を取得しています…');
+    if (watchId != null) {
+      navigator.geolocation.clearWatch(watchId);
+      watchId = null;
+    }
+    watchId = navigator.geolocation.watchPosition(onGeoSuccess, onGeoError, {
+      enableHighAccuracy: true,
+      maximumAge: 5000,
+      timeout: 20000
+    });
+  }
+
+  function stopOrientation() {
+    if (orientHandler) {
+      window.removeEventListener('deviceorientationabsolute', orientHandler);
+      window.removeEventListener('deviceorientation', orientHandler);
+      orientHandler = null;
+    }
+  }
+
+  function compassHeadingFromEvent(e) {
+    // Android: absolute alpha ≈ compass heading (0=north, clockwise)
+    if (e.absolute === true && e.alpha != null && !Number.isNaN(e.alpha)) {
+      return (360 - e.alpha) % 360;
+    }
+    if (typeof e.webkitCompassHeading === 'number' && !Number.isNaN(e.webkitCompassHeading)) {
+      return e.webkitCompassHeading;
+    }
+    if (e.alpha != null && !Number.isNaN(e.alpha)) {
+      return (360 - e.alpha) % 360;
+    }
+    return null;
+  }
+
+  function startOrientation() {
+    stopOrientation();
+    headingSource = null;
+    var got = false;
+    orientHandler = function (e) {
+      var h = compassHeadingFromEvent(e);
+      if (h == null) return;
+      got = true;
+      headingSource = 'device';
+      if (followHeading) {
+        map.setBearing(h);
+        btnNorth.disabled = false;
+      }
+    };
+    // Prefer absolute orientation when available
+    window.addEventListener('deviceorientationabsolute', orientHandler, true);
+    window.addEventListener('deviceorientation', orientHandler, true);
+
+    // Permission API (Android Chrome may support)
+    var tryPerm = Promise.resolve();
+    if (typeof DeviceOrientationEvent !== 'undefined' &&
+        typeof DeviceOrientationEvent.requestPermission === 'function') {
+      tryPerm = DeviceOrientationEvent.requestPermission().then(function (state) {
+        if (state !== 'granted') {
+          throw new Error('denied');
+        }
+      });
+    }
+
+    tryPerm.then(function () {
+      setTimeout(function () {
+        if (!got && followHeading) {
+          setStatus('端末の向きが取れません。移動中なら GPS の進行方向を使います。取れない場合は北上のままです。', 'error');
+        } else if (followHeading && got) {
+          setStatus('向きに合わせて地図を回転しています。', 'ok');
+          btnNorth.disabled = false;
+        }
+      }, 2500);
+    }).catch(function () {
+      setStatus('向きセンサーの許可が得られませんでした。設定で許可するか、北上のままお使いください。', 'error');
+      toggleHeading.checked = false;
+      followHeading = false;
+      stopOrientation();
+    });
+  }
+
+  function resetNorth() {
+    map.easeTo({ bearing: 0, duration: 400 });
+    followHeading = false;
+    toggleHeading.checked = false;
+    stopOrientation();
+    headingSource = null;
+    btnNorth.disabled = true;
+    setStatus('北上（画面上＝北）に戻しました。', 'ok');
+  }
+
+  btnLocate.addEventListener('click', function () {
+    startLocate();
+  });
+
+  btnNorth.addEventListener('click', function () {
+    resetNorth();
+  });
+
+  toggleHeading.addEventListener('change', function () {
+    followHeading = toggleHeading.checked;
+    if (followHeading) {
+      btnNorth.disabled = false;
+      startOrientation();
+      setStatus('向きを合わせるモードです。センサーまたは移動方向を待ちます…');
+    } else {
+      stopOrientation();
+      headingSource = null;
+      map.easeTo({ bearing: 0, duration: 400 });
+      btnNorth.disabled = true;
+      setStatus('北上に戻しました。', 'ok');
+    }
+  });
+
+  map.on('load', function () {
+    // Auto-locate after map ready (user can also press the button)
+    startLocate();
+  });
+
+  window.addEventListener('beforeunload', function () {
+    if (watchId != null) navigator.geolocation.clearWatch(watchId);
+    stopOrientation();
+  });
+})();
+  </script>
+</body>
+</html>
