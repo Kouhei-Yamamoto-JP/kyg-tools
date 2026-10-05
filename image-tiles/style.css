@@ -1,0 +1,8 @@
+.image-list,.outputs { display:grid; gap:.55rem; margin-top:1rem; }
+.image-row,.output-row { display:grid; grid-template-columns:auto 1fr auto; gap:.7rem; align-items:center; padding:.55rem; border:1px solid var(--border); border-radius:var(--radius-sm); }
+.image-row img,.output-row img { width:64px; height:52px; object-fit:contain; background:var(--panel-inset); }
+.canvas-wrap { max-width:100%; overflow:auto; padding:.5rem; background:var(--panel-inset); border-radius:var(--radius-sm); }
+#preview { display:block; max-width:100%; max-height:65vh; height:auto; margin:auto; touch-action:none; }
+.field-row > [hidden], [hidden] { display:none!important; }
+progress { width:100%; height:1rem; }
+@media(max-width:480px){.image-row,.output-row{grid-template-columns:auto 1fr}.image-row .remove,.output-row .save{grid-column:2}}

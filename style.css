@@ -162,3 +162,11 @@ body {
     --container-max: 48rem;
   }
 }
+
+
+.section-title {
+  margin: 2.25rem 0 0.75rem;
+  font-size: clamp(1.1rem, 1rem + 0.5vw, 1.35rem);
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
