@@ -3,7 +3,7 @@
   const Store = window.KygImageSuiteStorage;
   const $ = (s) => document.querySelector(s);
   const allowed = /\.(png|jpe?g|webp|gif|avif|bmp|ico|svg|heic|heif)$/i;
-  const state = { images: [], layers: [], outputs: [], activeLayer: null, stopped: false, busy: false };
+  const state = { images: [], layers: [], outputs: [], activeLayer: null, stopped: false, busy: false, pendingFiles: new Set() };
   const label = (text) => { const e = document.createElement('label'); e.textContent = text; return e; };
   const field = (caption, control) => { const wrap = document.createElement('div'); wrap.className = 'field'; const l = label(caption); if (control.id) l.htmlFor = control.id; wrap.append(l, control); return wrap; };
   const control = (type, value, min, max, step = 1) => { const e = document.createElement('input'); e.type = type; if (value != null) e.value = value; if (min != null) e.min = min; if (max != null) e.max = max; if (step != null) e.step = step; return e; };
@@ -11,15 +11,18 @@
     let pixels = state.images.reduce((n, x) => n + (x.width || 0) * (x.height || 0), 0);
     for (const file of files) {
       if (!(file.type.startsWith('image/') || allowed.test(file.name))) { UI.toast('対応していない画像形式です。PNG、JPG、WebP、GIF、AVIF、BMP、ICO、SVG、HEIC、HEIFを選んでください。', 'danger'); continue; }
-      if (state.images.some((x) => x.file === file || (x.file.name === file.name && x.file.size === file.size && x.file.lastModified === file.lastModified))) continue;
+      const fileKey = `${file.name}\0${file.size}\0${file.lastModified}`;
+      if (state.images.some((x) => x.file === file || (x.file.name === file.name && x.file.size === file.size && x.file.lastModified === file.lastModified)) || state.pendingFiles.has(fileKey)) continue;
       if (state.images.length >= 20) { UI.toast('画像は最大20枚まで追加できます。', 'danger'); break; }
       if (file.size > 50 * 1024 * 1024) { UI.toast(`${file.name}: 1ファイル50 MBを超えています。`, 'danger'); continue; }
+      state.pendingFiles.add(fileKey);
       try {
         const image = await UI.loadImageFromFile(file), size = image.width * image.height;
         if (size > 67_200_000) { UI.toast(`${file.name}: ${size.toLocaleString()}画素が上限67,200,000画素を超えています。`, 'danger'); continue; }
         if (pixels + size > 100_000_000) { UI.toast('元画像の合計画素数が100,000,000画素を超えます。', 'danger'); break; }
         pixels += size; state.images.push({ file, image, width: image.width, height: image.height, path: file.webkitRelativePath || file.name });
       } catch { UI.toast(`${file.name}: ファイルを読み込めませんでした。画像が破損している可能性があります。`, 'danger'); }
+      finally { state.pendingFiles.delete(fileKey); }
     }
     renderImages(); renderPreview();
   }
@@ -33,7 +36,7 @@
       row.append(thumb, name, remove); host.append(row);
     });
   }
-  function newLayer() { return { type: 'text', text: '© KYG Style', logo: null, mode: 'single', opacity: 80, rotation: 0, x: 50, y: 50, interval: 150, tileLimit:1000, count: 10, jitter: false, size: 36, color: '#ffffff', stroke: 0, strokeColor: '#000000', letterSpacing:0, lineHeight:1.2, shadowBlur:4, shadowX:2, shadowY:2, shadowColor:'#000000', logoWidth: 200, bannerColor: '#000000', bannerOpacity: 60, bannerPad: 20, position: 'bottom' }; }
+  function newLayer() { return { type: 'text', text: '© 私の作品', logo: null, mode: 'single', opacity: 65, rotation: 0, x: 90, y: 90, interval: 150, tileLimit:1000, count: 10, jitter: false, size: 48, color: '#ffffff', stroke: 0, strokeColor: '#000000', letterSpacing:0, lineHeight:1.2, shadowBlur:4, shadowX:2, shadowY:2, shadowColor:'#000000', logoWidth: 200, bannerColor: '#000000', bannerOpacity: 60, bannerPad: 20, position: 'bottom' }; }
   if (!state.layers.length) state.layers.push(newLayer());
   function renderLayers() {
     const root = $('#layers'); root.replaceChildren();
@@ -102,7 +105,7 @@
     for (let i = 0; i < state.images.length; i++) { if (state.stopped) break; const item = state.images[i]; try { const blob = await renderOne(item.file, i + 1); const ext = $('#format').value.split('/')[1].replace('jpeg', 'jpg'); const name = item.file.name.replace(/\.[^.]+$/, '') + `_marked.${ext}`; const url = URL.createObjectURL(blob); state.outputs.push({ name, path: item.path.split('/').slice(0, -1).concat(name).join('/'), blob, url }); const fig=document.createElement('figure'),img=document.createElement('img'),cap=document.createElement('figcaption'),save=document.createElement('button');img.src=url;img.alt='';cap.textContent=name;save.className='btn';save.textContent='この画像を保存';save.onclick=()=>UI.downloadBlob(blob,name);fig.append(img,cap,save);$('#outputs').append(fig); $('#status').textContent = `${i + 1}/${state.images.length}枚を処理しました。`; } catch (e) { UI.toast(`${item.file.name}: ${e.message}`, 'danger'); } progress.value = i + 1; await new Promise(requestAnimationFrame); }
     state.busy = false; $('#process').disabled = false; $('#cancel').disabled = true; $('#files').disabled=$('#folder').disabled=$('#format').disabled=$('#out-width').disabled=$('#add-layer').disabled=false;$('#layers').style.pointerEvents='';$('#zip').disabled = !state.outputs.length; $('#status').textContent = state.stopped ? `中止しました。完了した${state.outputs.length}枚は保存できます。` : `${state.outputs.length}枚を書き出しました。`;
   }
-  $('#choose').onclick = () => $('#files').click(); $('#choose-folder').onclick = () => $('#folder').click(); $('#files').onchange = (e) => validFiles([...e.target.files]); $('#folder').onchange = (e) => validFiles([...e.target.files]);
+  $('#choose').onclick = () => $('#files').click(); $('#choose-folder').onclick = () => $('#folder').click(); $('#folder').onchange = (e) => validFiles([...e.target.files]);
   UI.setupDropzone($('#dropzone'), { onFiles: validFiles, acceptDir: false });
   document.addEventListener('paste', async (e) => { const files = [...(e.clipboardData?.items || [])].filter((x) => x.type.startsWith('image/')).map((x) => x.getAsFile()).filter(Boolean); if (!files.length) { UI.toast('画像形式のクリップボードデータではありません。', 'danger'); return; } if(state.activeLayer?.type==='logo'){const f=files[0],index=state.layers.indexOf(state.activeLayer);state.activeLayer.logo=f;if($('#persist').checked)try{await Store.putBlob(`mark.logo.${index}`,f,{name:f.name});}catch{UI.toast('ブラウザ保存の容量が不足しています。','danger');}renderPreview();}else validFiles(files); });
   $('#add-layer').onclick = () => { if (state.layers.length >= 10) return UI.toast('透かしレイヤーは最大10個です。', 'danger'); state.layers.push(newLayer()); renderLayers(); renderPreview(); };
