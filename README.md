@@ -10,6 +10,24 @@
 | https://tools.kyg-style.com/改行ツール/ | SNSアカウント名強制改行ツール |
 | https://tools.kyg-style.com/newline/ | 上記への ASCII エイリアス（リダイレクト） |
 
+
+## 画像・動画ツール群（作業ブランチ）
+
+作業ブランチ `feature/image-suite-staging` 上の追加です。**本番公開（main マージ）前**はローカル確認のみ。
+
+| URL（ローカル） | 内容 |
+|------|------|
+| /image-workbench/ | 形式とサイズ |
+| /image-slim/ | 軽量化 |
+| /mark-images/ | 透かしを重ねる |
+| /image-tiles/ | 切り分け |
+| /photo-metadata/ | 撮影データを見る |
+| /clip-gif/ | GIFを作る |
+| /post-panels/ | 連続画像を作る |
+| /post-panels-space/ | 余白つき2枚 |
+
+共有アセット: `/assets/image-suite/`（`common.css` / `ui.js` / `storage.js` / `vendor/`）。
+
 ## リポジトリ構成
 
 ```
