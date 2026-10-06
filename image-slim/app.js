@@ -2,8 +2,9 @@
   const UI = window.KygImageSuiteUI;
   const Store = window.KygImageSuiteStorage;
   const app = document.getElementById('app');
-  const state = { items: [], mode: 'keep', quality: 75, stripMeta: true, abort: false, results: [] };
+  const state = { items: [], mode: 'keep', strength: 40, stripMeta: true, abort: false, results: [] };
   const MiB = 1024 * 1024;
+  let fflatePromise;
 
   function render() {
     app.innerHTML = `
@@ -17,14 +18,14 @@
       <section class="panel">
         <div class="field"><label>方式</label>
           <select id="mode"><option value="keep">画質優先・最適化</option><option value="manual">圧縮率指定（手動調整）</option></select></div>
-        <div class="field"><label>圧縮率 1〜100（100=高画質）: <span id="qv">75</span></label><input type="range" id="q" min="1" max="100" value="75"></div>
+        <div class="field"><label>圧縮強度 1〜100（強いほど軽量化）: <span id="qv">40</span></label><input type="range" id="q" min="1" max="100" value="40"></div>
         <label><input type="checkbox" id="strip" checked> メタデータ（Exif等）を削除して軽量化</label>
         <div class="actions"><button class="btn primary" id="run" type="button">すべて処理</button><button class="btn danger" id="abort" type="button">中止</button><button class="btn" id="zip" type="button" disabled>ZIPで保存</button></div>
         <div class="status-bar" id="status">待機中</div><div class="preview-box" id="prev"></div>
       </section>`;
     wire();
-    const saved = Store.getSetting('slim.settings');
-    if (saved?.quality) { document.getElementById('q').value = saved.quality; document.getElementById('qv').textContent = saved.quality; state.quality = saved.quality; }
+    const saved = Store.getSetting('slim.settings.v2');
+    if (saved?.strength) { document.getElementById('q').value = saved.strength; document.getElementById('qv').textContent = saved.strength; state.strength = saved.strength; }
   }
 
   function bytesView(blob) { return blob.arrayBuffer().then((b) => new Uint8Array(b)); }
@@ -33,15 +34,98 @@
   function blobFrom(a, type) { return new Blob([a], { type }); }
   function smallerOrOriginal(file, blob) { return blob.size < file.size ? blob : file; }
 
+  function pngCrc32(type, data) {
+    let crc = 0xffffffff;
+    for (let i = 0; i < 4 + data.length; i++) {
+      const value = i < 4 ? type.charCodeAt(i) : data[i - 4];
+      crc ^= value;
+      for (let bit = 0; bit < 8; bit++) crc = (crc >>> 1) ^ (crc & 1 ? 0xedb88320 : 0);
+    }
+    return (crc ^ 0xffffffff) >>> 0;
+  }
+
+  function makePngChunk(type, data) {
+    const chunk = new Uint8Array(data.length + 12), view = new DataView(chunk.buffer);
+    view.setUint32(0, data.length);
+    for (let i = 0; i < 4; i++) chunk[4 + i] = type.charCodeAt(i);
+    chunk.set(data, 8);
+    view.setUint32(chunk.length - 4, pngCrc32(type, data));
+    return chunk;
+  }
+
+  function concatBytes(parts) {
+    const out = new Uint8Array(parts.reduce((n, part) => n + part.length, 0));
+    let offset = 0;
+    for (const part of parts) { out.set(part, offset); offset += part.length; }
+    return out;
+  }
+
+  function redistribute(data, lengths) {
+    const out = [];
+    let offset = 0, remainingWeight = lengths.reduce((n, length) => n + length, 0);
+    for (let i = 0; i < lengths.length; i++) {
+      const remainingChunks = lengths.length - i;
+      const size = i === lengths.length - 1 ? data.length - offset : remainingWeight
+        ? Math.min(data.length - offset, Math.round((data.length - offset) * lengths[i] / remainingWeight))
+        : Math.floor((data.length - offset) / remainingChunks);
+      out.push(data.subarray(offset, offset + size));
+      offset += size;
+      remainingWeight -= lengths[i];
+    }
+    return out;
+  }
+
+  async function optimiseApng(data, file) {
+    if (!fflatePromise) fflatePromise = import('/assets/image-suite/vendor/fflate/browser.mjs');
+    const { unzlibSync, zlibSync } = await fflatePromise;
+    const chunks = [];
+    for (let p = 8; p < data.length;) {
+      if (p + 12 > data.length) throw new Error(`${file.name}: PNGチャンクが途中で切れています。`);
+      const length = new DataView(data.buffer, data.byteOffset + p, 4).getUint32(0);
+      const end = p + 12 + length;
+      if (end > data.length) throw new Error(`${file.name}: PNGチャンク長が不正です。`);
+      const type = ascii(data, p + 4, 4);
+      chunks.push({ type, raw: data.subarray(p, end), payload: data.subarray(p + 8, p + 8 + length) });
+      p = end;
+      if (type === 'IEND') break;
+    }
+    if (!chunks.some((chunk) => chunk.type === 'acTL')) return null;
+    const frameCount = chunks.filter((chunk) => chunk.type === 'fcTL').length;
+    if (frameCount > 200) throw new Error(`${file.name}: アニメーションは200フレームまでです。`);
+
+    // APNG control chunks are copied byte-for-byte. Only complete zlib streams are
+    // recompressed; the resulting bytes are distributed over the same data chunks,
+    // so every fdAT sequence number and all timing/rectangle/blend fields survive.
+    const replacements = new Map();
+    for (let i = 0; i < chunks.length;) {
+      const type = chunks[i].type;
+      if (type !== 'IDAT' && type !== 'fdAT') { i++; continue; }
+      const group = [];
+      while (i < chunks.length && chunks[i].type === type) group.push(chunks[i++]);
+      const payloads = group.map((chunk) => type === 'fdAT' ? chunk.payload.subarray(4) : chunk.payload);
+      const compressed = concatBytes(payloads);
+      const raw = unzlibSync(compressed);
+      const optimized = zlibSync(raw, { level: 9 });
+      const pieces = redistribute(optimized, payloads.map((part) => part.length));
+      group.forEach((chunk, index) => {
+        const payload = type === 'fdAT'
+          ? concatBytes([chunk.payload.subarray(0, 4), pieces[index]])
+          : pieces[index];
+        replacements.set(chunk, makePngChunk(type, payload));
+      });
+    }
+    const result = concatBytes([data.subarray(0, 8), ...chunks.map((chunk) => replacements.get(chunk) || chunk.raw)]);
+    const optimized = blobFrom(result, 'image/png');
+    return optimized.size < file.size ? optimized : blobFrom(data, 'image/png');
+  }
+
   async function optimisePng(file) {
     const data = await bytesView(file);
     if (ascii(data, 0, 8) !== '\x89PNG\r\n\x1a\n') return file;
-    // oxipng handles standard PNG; APNG chunks are preserved by returning input unchanged.
+    // APNG image streams are losslessly recompressed while the animation chunks stay intact.
     let apng = false;
-    let apngFrames=0;
-    for (let p=8; p+12<=data.length;) { const n=((data[p]<<24)|(data[p+1]<<16)|(data[p+2]<<8)|data[p+3])>>>0; const type=ascii(data,p+4,4); if(type==='acTL')apng=true;if(type==='fcTL')apngFrames++; p += 12+n; if(type==='IEND')break; }
-    if(apngFrames>200)throw new Error(`${file.name}: アニメーションは200フレームまでです。`);
-    if (apng) { UI.toast(`${file.name}: APNGはアニメーション保持のため元ファイルを維持しました（専用最適化なし）。`); return file; }
+    for (let p=8; p+12<=data.length;) { const n=((data[p]<<24)|(data[p+1]<<16)|(data[p+2]<<8)|data[p+3])>>>0; const type=ascii(data,p+4,4); if(type==='acTL')apng=true; p += 12+n; if(type==='IEND')break; }
+    if (apng) return optimiseApng(data, file);
     const { default: optimise } = await import('/assets/image-suite/vendor/oxipng/optimise.js');
     const out = await optimise(data, { level: 2, optimiseAlpha: true });
     return smallerOrOriginal(file, blobFrom(out, 'image/png'));
@@ -133,13 +217,31 @@
     if(w*h>16_000_000)throw new Error('1枚1,600万画素まで: '+file.name);
     UI.assertCanvasSafe(w,h);const canvas=document.createElement('canvas');canvas.width=w;canvas.height=h;canvas.getContext('2d').drawImage(img,0,0);
     let mime=file.type||'image/jpeg';if(!/^image\/(jpeg|png|webp)$/.test(mime))mime='image/jpeg';
-    return smallerOrOriginal(file,await UI.canvasToBlob(canvas,mime,state.quality/100));
+    // Browser JPEG/WebP encoders accept quality rather than a reduction strength.
+    // Reverse the reference slider direction while retaining its 1–100 scale.
+    const quality = Math.max(0.01, (101 - state.strength) / 100);
+    return smallerOrOriginal(file,await UI.canvasToBlob(canvas,mime,quality));
+  }
+  async function isApng(file) {
+    const data = await bytesView(file);
+    if (ascii(data, 0, 8) !== '\x89PNG\r\n\x1a\n') return false;
+    for (let p = 8; p + 12 <= data.length;) {
+      const length = ((data[p] << 24) | (data[p+1] << 16) | (data[p+2] << 8) | data[p+3]) >>> 0;
+      const type = ascii(data, p + 4, 4);
+      if (type === 'acTL') return true;
+      p += 12 + length;
+      if (type === 'IEND') break;
+    }
+    return false;
   }
   async function slimFile(file) {
+    // Canvas only exposes an APNG's still fallback image. Keep the animation and
+    // apply the lossless stream optimizer until a frame-aware palette encoder is used.
+    if(await isApng(file))return optimisePng(file);
     if(state.mode==='manual')return manualReencode(file);
     if(/\.svg$/i.test(file.name)||file.type==='image/svg+xml')return tidySvg(file);
     if(/\.gif$/i.test(file.name)||file.type==='image/gif')return optimiseGif(file);
-    if(/\.apng$/i.test(file.name)||file.type==='image/apng') { UI.toast(`${file.name}: APNGはアニメーション保持のため元ファイルを維持しました（専用最適化なし）。`); return file; }
+    if(/\.apng$/i.test(file.name)||file.type==='image/apng')return optimisePng(file);
     if(/\.png$/i.test(file.name)||file.type==='image/png')return optimisePng(file);
     if(/\.jpe?g$/i.test(file.name)||file.type==='image/jpeg')return stripJpeg(file);
     if(/\.webp$/i.test(file.name)||file.type==='image/webp')return stripWebp(file);
@@ -148,8 +250,8 @@
   }
 
   async function run() {
-    state.mode=document.getElementById('mode').value;state.quality=+document.getElementById('q').value;state.stripMeta=document.getElementById('strip').checked;
-    Store.setSetting('slim.settings',{quality:state.quality,mode:state.mode});state.abort=false;
+    state.mode=document.getElementById('mode').value;state.strength=+document.getElementById('q').value;state.stripMeta=document.getElementById('strip').checked;
+    Store.setSetting('slim.settings.v2',{strength:state.strength,mode:state.mode});state.abort=false;
     const prev=document.getElementById('prev');prev.innerHTML='';state.results=[];
     let animatedPx=0,totalBytes=0;for(const it of state.items)totalBytes+=it.file.size;
     if(state.items.length>20)throw new Error('最大20枚までです。');if(totalBytes>100*MiB)throw new Error('合計100MBを超えます。');
@@ -164,9 +266,11 @@
         if(w*h>16_000_000)throw new Error(`${file.name}: 1枚1,600万画素まで`);
         if(frames>1)animatedPx+=w*h*frames;
         if(animatedPx>24_000_000)throw new Error('アニメーション画像の合計2,400万画素までです。');
-        const out=await slimFile(file),name=file.name;state.results.push({name,blob:out,before:file.size,after:out.size});
+        const out=await slimFile(file),ext=(file.name.match(/\.([^.]+)$/)?.[1]||'png').toLowerCase();
+        const name=`${String(state.results.length+1).padStart(2,'0')}-${file.name.replace(/\.[^.]+$/,'')}-compressed.${ext}`;
+        state.results.push({name,blob:out,before:file.size,after:out.size});
         const previewBlob=UI.isHeicFile(file)&&(decoded?.sourceBlob)?decoded.sourceBlob:out;
-        const url=URL.createObjectURL(previewBlob),rate=Math.max(0,Math.round((1-out.size/file.size)*100));
+        const url=URL.createObjectURL(previewBlob),rate=Math.max(0,((1-out.size/file.size)*100)).toFixed(1);
         const fig=document.createElement('figure'),img=document.createElement('img'),caption=document.createElement('figcaption'),button=document.createElement('button');img.src=url;img.alt='';caption.append(`${name}: ${UI.formatBytes(file.size)} → ${UI.formatBytes(out.size)}（-${rate}%） `);button.type='button';button.className='btn';button.textContent='保存';button.dataset.i=String(state.results.length-1);caption.append(button);fig.append(img,caption);prev.append(fig);
       }catch(e){UI.toast(e.message||String(e),'danger');}
     }

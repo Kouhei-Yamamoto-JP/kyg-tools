@@ -10,7 +10,32 @@
     rename: { prefix: 'img', pattern: 'prefix_num', sep: '_', start: 1, digits: 3 },
   };
   const upscalers = new Map();
+  const scriptPromises = new Map();
   let backendPromise;
+
+  function loadScriptOnce(src) {
+    if (!scriptPromises.has(src)) {
+      const promise = new Promise((resolve, reject) => {
+        const script = document.createElement('script');
+        script.src = src;
+        script.async = true;
+        script.onload = () => resolve();
+        script.onerror = () => reject(new Error(`スクリプトを読み込めませんでした: ${src}`));
+        document.head.appendChild(script);
+      }).catch((error) => {
+        scriptPromises.delete(src);
+        throw error;
+      });
+      scriptPromises.set(src, promise);
+    }
+    return scriptPromises.get(src);
+  }
+
+  async function loadUpscalerAssets(scale) {
+    await loadScriptOnce('/assets/image-suite/vendor/tf.min.js');
+    await loadScriptOnce(`/assets/image-suite/vendor/esrgan-medium-x${scale}.min.js`);
+    await loadScriptOnce('/assets/image-suite/vendor/upscaler.min.js');
+  }
 
   function render() {
     app.innerHTML = `
@@ -195,6 +220,7 @@
 
   async function upscaleTiled(img, canvas, scale, signal, itemIndex) {
     setStatus('AI高画質化モデルを読み込み中...');
+    await loadUpscalerAssets(scale);
     const backend = await ensureBackend();
     const upscaler = getUpscaler(scale);
     // The first upscale triggers local model loading; keep the status explicit until its first tile returns.
