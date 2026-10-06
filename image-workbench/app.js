@@ -4,11 +4,13 @@
   const app = document.getElementById('app');
   const PRESETS = [320,480,640,800,1024,1280,1600,1920,2048,2560,3840];
   const state = {
-    items: [], abort: false,
+    items: [], abort: false, controller: null, running: false,
     outFmt: 'keep', resizeMode: 'original', sizePx: 1280,
     scale: 1, ai: false,
     rename: { prefix: 'img', pattern: 'prefix_num', sep: '_', start: 1, digits: 3 },
   };
+  const upscalers = new Map();
+  let backendPromise;
 
   function render() {
     app.innerHTML = `
@@ -146,6 +148,93 @@
     return { w: Math.max(1, Math.round(w0*s)), h: Math.max(1, Math.round(h0*s)) };
   }
 
+  function setStatus(message) {
+    const el = document.getElementById('status');
+    if (el) el.textContent = message;
+  }
+
+  async function ensureBackend() {
+    if (!backendPromise) {
+      backendPromise = (async () => {
+        const tf = window.tf;
+        if (!tf) throw new Error('TensorFlow.jsを読み込めませんでした。');
+        try {
+          if (await tf.setBackend('webgl')) {
+            await tf.ready();
+            return 'WebGL';
+          }
+        } catch (e) { /* CPU backend is attempted below. */ }
+        if (!await tf.setBackend('cpu')) throw new Error('WebGL・CPUバックエンドを利用できません。');
+        await tf.ready();
+        return 'CPU';
+      })();
+    }
+    return backendPromise;
+  }
+
+  function getUpscaler(scale) {
+    if (!upscalers.has(scale)) {
+      const source = scale === 2 ? window.ESRGANMedium2x : window.ESRGANMedium4x;
+      if (!source || !window.Upscaler) throw new Error('高画質化モデルを読み込めませんでした。');
+      const path = `/assets/image-suite/models/esrgan-medium/x${scale}/model.json`;
+      // The ESRGAN UMD package stores its model path in _internals.path.
+      const model = { ...source, path, _internals: { ...source._internals, path } };
+      upscalers.set(scale, new window.Upscaler({ model }));
+    }
+    return upscalers.get(scale);
+  }
+
+  function imageFromDataUrl(src) {
+    return new Promise((resolve, reject) => {
+      const image = new Image();
+      image.onload = () => resolve(image);
+      image.onerror = () => reject(new Error('AI高画質化の出力を読み込めませんでした。'));
+      image.src = src.startsWith('data:') ? src : `data:image/png;base64,${src}`;
+    });
+  }
+
+  async function upscaleTiled(img, canvas, scale, signal, itemIndex) {
+    setStatus('AI高画質化モデルを読み込み中...');
+    const backend = await ensureBackend();
+    const upscaler = getUpscaler(scale);
+    // The first upscale triggers local model loading; keep the status explicit until its first tile returns.
+    const tileSize = 256, overlap = 16, step = tileSize - overlap * 2;
+    const cols = Math.ceil(img.naturalWidth / step), rows = Math.ceil(img.naturalHeight / step);
+    const total = cols * rows;
+    const ctx = canvas.getContext('2d');
+    let finished = 0;
+    for (let y = 0; y < img.naturalHeight; y += step) {
+      for (let x = 0; x < img.naturalWidth; x += step) {
+        if (signal.aborted) throw new DOMException('処理を中止しました。', 'AbortError');
+        const coreRight = Math.min(img.naturalWidth, x + step);
+        const coreBottom = Math.min(img.naturalHeight, y + step);
+        const left = Math.max(0, x - overlap), top = Math.max(0, y - overlap);
+        const right = Math.min(img.naturalWidth, x + step + overlap);
+        const bottom = Math.min(img.naturalHeight, y + step + overlap);
+        const tile = document.createElement('canvas');
+        tile.width = right - left; tile.height = bottom - top;
+        tile.getContext('2d').drawImage(img, left, top, tile.width, tile.height, 0, 0, tile.width, tile.height);
+        const result = await upscaler.upscale(tile, {
+          patchSize: 128, padding: 8, awaitNextFrame: true, signal,
+        });
+        if (signal.aborted) throw new DOMException('処理を中止しました。', 'AbortError');
+        const upscaled = await imageFromDataUrl(result);
+        const sx = (x - left) * scale, sy = (y - top) * scale;
+        const sw = (coreRight - x) * scale, sh = (coreBottom - y) * scale;
+        ctx.drawImage(upscaled, sx, sy, sw, sh, x * scale, y * scale, sw, sh);
+        finished++;
+        setStatus(`AI高画質化中（${backend}） ${finished}/${total} タイル`);
+        const row = document.querySelector(`#tbl tbody tr:nth-child(${itemIndex + 1})`);
+        if (row) row.children[4].textContent = `高画質化 ${finished}/${total}`;
+      }
+    }
+    // ESRGAN outputs RGB. Restore the source alpha mask at output resolution.
+    ctx.globalCompositeOperation = 'destination-in';
+    ctx.imageSmoothingEnabled = true;
+    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+    ctx.globalCompositeOperation = 'source-over';
+  }
+
   async function convertOne(it, index, used) {
     const img = await UI.loadImageFromFile(it.file);
     it.meta = `${img.naturalWidth}×${img.naturalHeight}`;
@@ -162,10 +251,23 @@
     const ctx = canvas.getContext('2d');
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = 'high';
-    ctx.drawImage(img, 0, 0, w, h);
     if (ai) {
-      // モデル未同梱時は高品質スムーズ拡大＋注記
-      it.status = '高画質化（スムーズ拡大フォールバック）';
+      const scale = state.resizeMode === 'ai2' ? 2 : 4;
+      try {
+        await upscaleTiled(img, canvas, scale, state.controller.signal, index);
+        it.status = 'AI高画質化 完了';
+      } catch (e) {
+        if (state.controller.signal.aborted) throw e;
+        console.warn('AI高画質化に失敗したためスムーズ拡大へ切り替えます。', e);
+        ctx.globalCompositeOperation = 'source-over';
+        ctx.clearRect(0, 0, w, h);
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = 'high';
+        ctx.drawImage(img, 0, 0, w, h);
+        it.status = '高画質化（スムーズ拡大フォールバック）';
+      }
+    } else {
+      ctx.drawImage(img, 0, 0, w, h);
     }
     let mime = state.outFmt;
     if (mime === 'keep') {
@@ -184,9 +286,13 @@
   }
 
   async function run() {
+    if (state.running) return;
     syncSettings();
     applyNames();
     state.abort = false;
+    state.running = true;
+    state.controller = new AbortController();
+    document.getElementById('run').disabled = true;
     const used = new Set();
     let done = 0;
     for (let i = 0; i < state.items.length; i++) {
@@ -198,13 +304,16 @@
         await convertOne(it, i, used);
         done++;
       } catch (e) {
-        it.status = '失敗: ' + (e.message || e);
+        it.status = state.controller.signal.aborted ? '中止' : '失敗: ' + (e.message || e);
       }
       refreshTable();
       document.getElementById('status').textContent = `進捗 ${i+1}/${state.items.length}`;
     }
     document.getElementById('zip').disabled = !state.items.some((x) => x.blob);
-    document.getElementById('status').textContent = state.abort ? `中止（完了 ${done}）` : `完了 ${done} 件`;
+    setStatus(state.abort ? `中止（完了 ${done}）` : `完了 ${done} 件`);
+    state.running = false;
+    state.controller = null;
+    document.getElementById('run').disabled = false;
   }
 
   function applyNames() {
@@ -224,7 +333,10 @@
     document.getElementById('preset').onchange = (e) => { document.getElementById('sizePx').value = e.target.value; };
     document.getElementById('applyName').onclick = applyNames;
     document.getElementById('run').onclick = run;
-    document.getElementById('abort').onclick = () => { state.abort = true; };
+    document.getElementById('abort').onclick = () => {
+      state.abort = true;
+      if (state.controller) state.controller.abort();
+    };
     document.getElementById('zip').onclick = async () => {
       const files = state.items.filter((x)=>x.blob).map((x)=>({name:x.outName, blob:x.blob}));
       await UI.zipAndDownload(files, 'converted.zip');
