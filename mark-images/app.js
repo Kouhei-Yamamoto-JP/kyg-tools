@@ -36,7 +36,7 @@
       row.append(thumb, name, remove); host.append(row);
     });
   }
-  function newLayer() { return { type: 'text', text: '© 私の作品', logo: null, mode: 'single', opacity: 65, rotation: 0, x: 90, y: 90, interval: 150, tileLimit:1000, count: 10, jitter: false, size: 48, color: '#ffffff', stroke: 0, strokeColor: '#000000', letterSpacing:0, lineHeight:1.3, shadowBlur:0, shadowX:0, shadowY:0, shadowColor:'#000000', logoWidth: 200, bannerColor: '#000000', bannerOpacity: 60, bannerPad: 20, position: 'bottom' }; }
+  function newLayer() { return { type: 'text', text: '© 私の作品', logo: null, mode: 'single', opacity: 65, rotation: 0, x: 90, y: 90, interval: 150, tileLimit:1000, count: 10, jitter: false, size: 48, autoScale: true, bold: false, italic: false, color: '#ffffff', stroke: 0, strokeColor: '#000000', letterSpacing:0, lineHeight:1.3, shadow: false, shadowBlur:8, shadowX:3, shadowY:3, shadowColor:'#000000', logoWidth: 200, bannerColor: '#000000', bannerOpacity: 70, bannerPad: 20, position: 'bottom' }; }
   if (!state.layers.length) state.layers.push(newLayer());
   function renderLayers() {
     const root = $('#layers'); root.replaceChildren();
@@ -62,7 +62,9 @@
       if (layer.mode === 'single') { for (const [key, cap] of [['x', '水平位置（%）'], ['y', '垂直位置（%）']]) { const c = control('number', layer[key], 0, 100); c.addEventListener('input', () => { layer[key] = clamp(+c.value, 0, 100); renderPreview(); }); grid.append(field(cap, c)); } const p=document.createElement('select');p.innerHTML='<option value="0,0">左上</option><option value="50,0">上中央</option><option value="100,0">右上</option><option value="0,50">中央左</option><option value="50,50">中央</option><option value="100,50">中央右</option><option value="0,100">左下</option><option value="50,100">下中央</option><option value="100,100">右下</option>';p.value=`${layer.x},${layer.y}`;p.onchange=()=>{[layer.x,layer.y]=p.value.split(',').map(Number);renderLayers();renderPreview();};grid.append(field('位置プリセット',p)); }
       if (layer.mode === 'tile') { const c = control('number', layer.interval, 10, 1000); c.addEventListener('input', () => { layer.interval = clamp(+c.value, 10, 1000); renderPreview(); }); grid.append(field('タイル間隔（px）', c));const limit=control('number',layer.tileLimit,1,1000);limit.oninput=()=>{layer.tileLimit=clamp(+limit.value,1,1000);renderPreview();};grid.append(field('配置上限（個）',limit)); }
       if (layer.mode === 'random') { const c = control('number', layer.count, 1, 50); c.addEventListener('input', () => { layer.count = clamp(+c.value, 1, 50); renderPreview(); }); grid.append(field('散布する個数', c)); const j = document.createElement('input'); j.type = 'checkbox'; j.checked = layer.jitter; j.onchange = () => { layer.jitter = j.checked; renderPreview(); }; grid.append(field('角度・大きさ・透明度をランダムに変える', j)); }
-      if (layer.type === 'text') { for (const [key, cap, min, max, step] of [['size', '文字サイズ（px）', 10, 800, 1], ['stroke', '縁取り幅（px）', 0, 20, 1],['letterSpacing','文字間隔（px）',-5,50,1],['lineHeight','行間（倍率）',.8,3,.1],['shadowBlur','影のぼかし（px）',0,50,1],['shadowX','影の距離X（px）',-50,50,1],['shadowY','影の距離Y（px）',-50,50,1]]) { const c = control('number', layer[key], min, max, step); c.addEventListener('input', () => { layer[key] = clamp(+c.value, min, max); renderPreview(); }); grid.append(field(cap, c)); } const color = control('color', layer.color); color.oninput = () => { layer.color = color.value; renderPreview(); }; grid.append(field('文字色', color));const strokeColor=control('color',layer.strokeColor);strokeColor.oninput=()=>{layer.strokeColor=strokeColor.value;renderPreview();};grid.append(field('縁取り色',strokeColor));const shadowColor=control('color',layer.shadowColor);shadowColor.oninput=()=>{layer.shadowColor=shadowColor.value;renderPreview();};grid.append(field('影の色',shadowColor)); }
+      const auto = document.createElement('input'); auto.type = 'checkbox'; auto.checked = !!layer.autoScale; auto.addEventListener('change', () => { layer.autoScale = auto.checked; renderPreview(); }); grid.append(field('画像の幅に合わせてサイズを変える', auto));
+      const bold = document.createElement('input'); bold.type = 'checkbox'; bold.checked = !!layer.bold; bold.addEventListener('change', () => { layer.bold = bold.checked; renderPreview(); }); grid.append(field('太字', bold));
+            if (layer.type === 'text') { for (const [key, cap, min, max, step] of [['size', '文字サイズ（px）', 10, 800, 1], ['stroke', '縁取り幅（px）', 0, 20, 1],['letterSpacing','文字間隔（px）',-5,50,1],['lineHeight','行間（倍率）',.8,3,.1],['shadowBlur','影のぼかし（px）',0,50,1],['shadowX','影の距離X（px）',-50,50,1],['shadowY','影の距離Y（px）',-50,50,1]]) { const c = control('number', layer[key], min, max, step); c.addEventListener('input', () => { layer[key] = clamp(+c.value, min, max); renderPreview(); }); grid.append(field(cap, c)); } const color = control('color', layer.color); color.oninput = () => { layer.color = color.value; renderPreview(); }; grid.append(field('文字色', color));const strokeColor=control('color',layer.strokeColor);strokeColor.oninput=()=>{layer.strokeColor=strokeColor.value;renderPreview();};grid.append(field('縁取り色',strokeColor));const shadowColor=control('color',layer.shadowColor);shadowColor.oninput=()=>{layer.shadowColor=shadowColor.value;renderPreview();};grid.append(field('影の色',shadowColor)); }
       if (layer.mode === 'banner') { const color = control('color', layer.bannerColor); color.oninput = () => { layer.bannerColor = color.value; renderPreview(); }; grid.append(field('帯の背景色', color));const alpha=control('number',layer.bannerOpacity,0,100);alpha.oninput=()=>{layer.bannerOpacity=clamp(+alpha.value,0,100);renderPreview();};grid.append(field('帯の不透明度（%）',alpha));const pad=control('number',layer.bannerPad,0,200);pad.oninput=()=>{layer.bannerPad=clamp(+pad.value,0,200);renderPreview();};grid.append(field('帯の上下余白（px）',pad)); const pos = document.createElement('select'); pos.innerHTML = '<option value="top">上部</option><option value="center">中央</option><option value="bottom">下部</option>'; pos.value = layer.position; pos.onchange = () => { layer.position = pos.value; renderPreview(); }; grid.append(field('帯の位置', pos)); }
       card.append(grid); root.append(card);
       type.onchange = () => { layer.type = type.value; renderLayers(); renderPreview(); };
@@ -70,19 +72,137 @@
   }
   function clamp(v, a, b) { return Math.max(a, Math.min(b, Number.isFinite(v) ? v : a)); }
   async function loadLogo(layer) { if (layer.logo) return UI.loadImageFromFile(layer.logo); return null; }
+  function rotAABB(w, h, angleDeg) {
+    const r = angleDeg * Math.PI / 180;
+    return { width: Math.abs(w * Math.cos(r)) + Math.abs(h * Math.sin(r)), height: Math.abs(w * Math.sin(r)) + Math.abs(h * Math.cos(r)) };
+  }
+  function measureTracked(ctx, str, tracking) {
+    if (!tracking) return ctx.measureText(str).width;
+    const chars = Array.from(str);
+    return chars.reduce((n, ch) => n + ctx.measureText(ch).width, 0) + Math.max(0, chars.length - 1) * tracking;
+  }
+  function fillTracked(ctx, str, x, y, tracking, stroke) {
+    const draw = (t, xx) => { if (stroke) ctx.strokeText(t, xx, y); else ctx.fillText(t, xx, y); };
+    if (!tracking) return draw(str, x);
+    let cur = x;
+    for (const ch of Array.from(str)) { draw(ch, cur); cur += ctx.measureText(ch).width + tracking; }
+  }
+  function buildTextStamp(layer, imgW, imgH, serial, filename) {
+    const scale = layer.autoScale ? imgW / 1000 : 1;
+    const size = layer.size * scale;
+    const strokeW = (layer.stroke || 0) * scale;
+    const tracking = (layer.letterSpacing || 0) * scale;
+    const text = layer.mode === 'dynamic'
+      ? layer.text.replaceAll('{連番}', String(serial)).replaceAll('{ファイル名}', filename.replace(/\.[^.]+$/, '')).replaceAll('{日付}', new Date().toLocaleDateString('ja-JP'))
+      : layer.text;
+    const lines = String(text).split('\n').slice(0, 20);
+    const font = `${layer.italic ? 'italic ' : ''}${layer.bold ? 'bold ' : ''}${size}px ${document.fonts.check(`${size}px KygWatermarkFont`) ? 'KygWatermarkFont, sans-serif' : 'sans-serif'}`;
+    const probe = document.createElement('canvas').getContext('2d');
+    probe.font = font;
+    const pad = strokeW + (0.12 * size + 2);
+    const textW = Math.max(1, ...lines.map((line) => measureTracked(probe, line, tracking)));
+    const textH = Math.max(1.35 * size, (lines.length - 1) * size * (layer.lineHeight || 1.3) + 1.35 * size);
+    let stampW = Math.max(1, textW + 2 * pad);
+    let stampH = Math.max(1, textH + 2 * pad);
+    const angle = layer.mode === 'banner' ? 0 : (layer.rotation || 0);
+    const aabb0 = rotAABB(stampW, stampH, angle);
+    const Ci = 12000;
+    const C = Math.min(1, 0.95 * imgW / Math.max(1, aabb0.width), 0.95 * imgH / Math.max(1, aabb0.height), Ci / stampW, Ci / stampH, Math.sqrt(16e6 / (stampW * stampH)));
+    const M = Math.max(1, Math.floor(stampW * C));
+    const K = Math.max(1, Math.floor(stampH * C));
+    const canvas = document.createElement('canvas');
+    canvas.width = M; canvas.height = K;
+    const ctx = canvas.getContext('2d');
+    ctx.scale(C * canvas.width / M, C * canvas.height / K);
+    ctx.font = font;
+    ctx.textBaseline = 'top';
+    ctx.fillStyle = layer.color;
+    ctx.strokeStyle = layer.strokeColor || '#000000';
+    ctx.lineWidth = 2 * strokeW;
+    ctx.lineJoin = 'round';
+    lines.forEach((line, i) => {
+      const lw = measureTracked(ctx, line, tracking);
+      const nx = (layer.align === 'left') ? 0 : (layer.align === 'right') ? textW - lw : (textW - lw) / 2;
+      const xx = pad + nx;
+      const yy = pad + i * size * (layer.lineHeight || 1.3);
+      if (strokeW) fillTracked(ctx, line, xx, yy, tracking, true);
+      fillTracked(ctx, line, xx, yy, tracking, false);
+    });
+    return { canvas, width: M, height: K, angle };
+  }
   function paintLayer(ctx, layer, w, h, image, serial = 1, filename = '') {
-    if (layer.mode === 'banner') { const textH = layer.type === 'text' ? layer.size * 1.5 : layer.logoWidth; const bandH = Math.min(h, textH + layer.bannerPad * 2); const y = layer.position === 'top' ? 0 : layer.position === 'center' ? (h - bandH) / 2 : h - bandH; ctx.save(); ctx.globalAlpha = layer.bannerOpacity / 100; ctx.fillStyle = layer.bannerColor; ctx.fillRect(0, y, w, bandH); ctx.restore(); }
-    const text = layer.mode === 'dynamic' ? layer.text.replaceAll('{連番}', String(serial)).replaceAll('{ファイル名}', filename.replace(/\.[^.]+$/, '')).replaceAll('{日付}', new Date().toLocaleDateString('ja-JP')) : layer.text;
-    const drawOne = (x, y, scale = 1, alpha = 1) => {
+    if (layer.mode === 'banner') {
+      const textH = layer.type === 'text' ? layer.size * (layer.autoScale ? w / 1000 : 1) * 1.5 : layer.logoWidth * (layer.autoScale ? w / 1000 : 1);
+      const bandH = Math.min(h, textH + layer.bannerPad * 2);
+      const y = layer.position === 'top' ? 0 : layer.position === 'center' ? (h - bandH) / 2 : h - bandH;
+      ctx.save(); ctx.globalAlpha = (layer.bannerOpacity || 70) / 100; ctx.fillStyle = layer.bannerColor; ctx.fillRect(0, y, w, bandH); ctx.restore();
+    }
+    if (layer.type === 'text') {
+      const stamp = buildTextStamp(layer, w, h, serial, filename);
+      const place = (px, py, sc = 1, alpha = 1) => {
+        ctx.save();
+        ctx.globalAlpha = (layer.opacity / 100) * alpha;
+        if (layer.shadow) {
+          const s = layer.autoScale ? w / 1000 : 1;
+          ctx.shadowColor = layer.shadowColor || '#000';
+          ctx.shadowBlur = (layer.shadowBlur || 8) * s;
+          ctx.shadowOffsetX = ctx.shadowOffsetY = (layer.shadowX || layer.shadowY || 3) * s;
+        }
+        ctx.translate(px, py);
+        ctx.rotate((stamp.angle || 0) * Math.PI / 180);
+        ctx.scale(sc, sc);
+        ctx.drawImage(stamp.canvas, -stamp.width / 2, -stamp.height / 2, stamp.width, stamp.height);
+        ctx.restore();
+      };
+      if (layer.mode === 'tile') {
+        const s = layer.autoScale ? w / 1000 : 1;
+        const stepX = Math.max(1, stamp.width + (layer.interval || 60) * s);
+        const stepY = Math.max(1, stamp.height + (layer.interval || 60) * s);
+        const limit = clamp(layer.tileLimit || 1000, 1, 1000);
+        let n = 0;
+        for (let y = -stepY; y <= h + stepY && n < limit; y += stepY)
+          for (let x = -stepX; x <= w + stepX && n < limit; x += stepX, n++) place(x, y);
+      } else if (layer.mode === 'random') {
+        const seed = (serial + 3) * 7159; let n = seed;
+        const rand = () => { n = (n * 48271) % 2147483647; return n / 2147483647; };
+        for (let i = 0; i < layer.count; i++) {
+          const sc = layer.jitter ? .55 + rand() * .9 : 1;
+          place(rand() * w, rand() * h, sc, layer.jitter ? .45 + rand() * .55 : 1);
+        }
+      } else {
+        const aabb = rotAABB(stamp.width, stamp.height, stamp.angle || 0);
+        const margin = 0.02 * Math.min(w, h);
+        const cx = Math.min(w / 2, aabb.width / 2 + margin);
+        const cy = Math.min(h / 2, aabb.height / 2 + margin);
+        const px = Math.max(cx, Math.min(w - cx, w * layer.x / 100));
+        const py = Math.max(cy, Math.min(h - cy, h * layer.y / 100));
+        if (layer.mode === 'banner') {
+          const half = stamp.height / 2;
+          const y = layer.position === 'top' ? layer.bannerPad + half : layer.position === 'center' ? h / 2 : h - layer.bannerPad - half;
+          place(w / 2, y);
+        } else place(px, py);
+      }
+      stamp.canvas.width = stamp.canvas.height = 0;
+      return;
+    }
+    // logo path
+    if (!image) return;
+    const scale = layer.autoScale ? w / 1000 : 1;
+    const iw = layer.logoWidth * scale, ih = iw * image.height / image.width;
+    const drawOne = (x, y, sc = 1, alpha = 1) => {
       ctx.save(); ctx.globalAlpha = (layer.opacity / 100) * alpha; ctx.translate(x, y); ctx.rotate(layer.rotation * Math.PI / 180);
-      if (layer.type === 'text') { const size = layer.size * scale; const hasCustom=[...document.fonts].some((f)=>f.family==='KygWatermarkFont'&&f.status==='loaded'); ctx.font = `${size}px ${hasCustom?'KygWatermarkFont, sans-serif':'sans-serif'}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.lineJoin = 'round'; ctx.letterSpacing = `${layer.letterSpacing || 0}px`;ctx.shadowColor=layer.shadowColor||'transparent';ctx.shadowBlur=layer.shadowBlur||0;ctx.shadowOffsetX=layer.shadowX||0;ctx.shadowOffsetY=layer.shadowY||0; const lines = text.split('\n').slice(0, 20); const lh = size * (layer.lineHeight||1.2); lines.forEach((line, i) => { const yy = (i - (lines.length - 1) / 2) * lh; if (layer.stroke) { ctx.lineWidth = layer.stroke; ctx.strokeStyle = layer.strokeColor; ctx.strokeText(line, 0, yy, w * 0.95); } ctx.fillStyle = layer.color; ctx.fillText(line, 0, yy, w * 0.95); }); }
-      else if (image) { const iw = layer.logoWidth * scale, ih = iw * image.height / image.width; ctx.drawImage(image, -iw / 2, -ih / 2, iw, ih); }
-      ctx.restore();
+      ctx.drawImage(image, -iw * sc / 2, -ih * sc / 2, iw * sc, ih * sc); ctx.restore();
     };
-    if (layer.mode === 'tile') { const step = Math.max(10, layer.interval), limit=clamp(layer.tileLimit||1000,1,1000); let n = 0; for (let y = -step; y <= h + step && n < limit; y += step) for (let x = -step; x <= w + step && n < limit; x += step, n++) drawOne(x, y); }
-    else if (layer.mode === 'random') { const seed = (serial + 3) * 7159; let n = seed; const rand = () => { n = (n * 48271) % 2147483647; return n / 2147483647; }; for (let i = 0; i < layer.count; i++) { const scale = layer.jitter ? .55 + rand() * .9 : 1; drawOne(rand() * w, rand() * h, scale, layer.jitter ? .45 + rand() * .55 : 1); } }
-    else if (layer.mode === 'banner') { const half = layer.type === 'text' ? layer.size / 2 : layer.logoWidth / 2; const y = layer.position === 'top' ? layer.bannerPad + half : layer.position === 'center' ? h / 2 : h - layer.bannerPad - half; drawOne(w / 2, y); }
-    else { const x = w * layer.x / 100, y = h * layer.y / 100; drawOne(x, y); }
+    if (layer.mode === 'tile') {
+      const step = Math.max(10, layer.interval), limit = clamp(layer.tileLimit || 1000, 1, 1000); let n = 0;
+      for (let y = -step; y <= h + step && n < limit; y += step) for (let x = -step; x <= w + step && n < limit; x += step, n++) drawOne(x, y);
+    } else if (layer.mode === 'random') {
+      const seed = (serial + 3) * 7159; let n = seed; const rand = () => { n = (n * 48271) % 2147483647; return n / 2147483647; };
+      for (let i = 0; i < layer.count; i++) { const sc = layer.jitter ? .55 + rand() * .9 : 1; drawOne(rand() * w, rand() * h, sc, layer.jitter ? .45 + rand() * .55 : 1); }
+    } else if (layer.mode === 'banner') {
+      const y = layer.position === 'top' ? layer.bannerPad + ih / 2 : layer.position === 'center' ? h / 2 : h - layer.bannerPad - ih / 2;
+      drawOne(w / 2, y);
+    } else drawOne(w * layer.x / 100, h * layer.y / 100);
   }
   async function renderOne(file, serial, preview = false) {
     const image = await UI.loadImageFromFile(file); const outW = clamp(+$('#out-width').value || image.width, 1, 12000); const scale = outW / image.width; const w = Math.round(outW), h = Math.round(image.height * scale);
