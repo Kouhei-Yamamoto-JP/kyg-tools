@@ -220,7 +220,13 @@
     // Browser JPEG/WebP encoders accept quality rather than a reduction strength.
     // Reverse the reference slider direction while retaining its 1–100 scale.
     const quality = Math.max(0.01, (101 - state.strength) / 100);
-    return smallerOrOriginal(file,await UI.canvasToBlob(canvas,mime,quality));
+    let out=await UI.canvasToBlob(canvas,mime,quality);
+    // Canvas PNG ignores quality; follow keep-mode oxipng so small PNGs still shrink like the reference.
+    if(mime==='image/png'){
+      const tmp=new File([out], file.name.replace(/\.webp$/i,'.png').replace(/\.jpe?g$/i,'.png'), {type:'image/png'});
+      out=await optimisePng(tmp);
+    }
+    return smallerOrOriginal(file,out);
   }
   async function isApng(file) {
     const data = await bytesView(file);

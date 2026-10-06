@@ -10,7 +10,7 @@
     let sum = state.images.reduce((n, x) => n + x.width * x.height, 0);
     for (const file of files) {
       if (!valid(file)) { UI.toast('対応していない画像形式です。PNG、JPG、WebP、GIF、AVIF、BMP、ICO、SVG、HEIC、HEIFを選んでください。', 'danger'); continue; }
-      if (state.images.some((x) => x.file === file)) continue;
+      if (state.images.some((x) => x.file === file || (x.file.name === file.name && x.file.size === file.size && x.file.lastModified === file.lastModified))) continue;
       if (state.images.length >= capImages) { UI.toast('画像は最大20枚まで追加できます。', 'danger'); break; }
       try { const img = await load(file); const px = img.width * img.height;
         if (px > capOne) { UI.toast(`${file.name}: ${px.toLocaleString()}画素が上限67,200,000画素を超えています。`, 'danger'); continue; }

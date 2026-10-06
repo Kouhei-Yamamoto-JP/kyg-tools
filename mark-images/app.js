@@ -11,7 +11,7 @@
     let pixels = state.images.reduce((n, x) => n + (x.width || 0) * (x.height || 0), 0);
     for (const file of files) {
       if (!(file.type.startsWith('image/') || allowed.test(file.name))) { UI.toast('対応していない画像形式です。PNG、JPG、WebP、GIF、AVIF、BMP、ICO、SVG、HEIC、HEIFを選んでください。', 'danger'); continue; }
-      if (state.images.some((x) => x.file === file)) continue;
+      if (state.images.some((x) => x.file === file || (x.file.name === file.name && x.file.size === file.size && x.file.lastModified === file.lastModified))) continue;
       if (state.images.length >= 20) { UI.toast('画像は最大20枚まで追加できます。', 'danger'); break; }
       if (file.size > 50 * 1024 * 1024) { UI.toast(`${file.name}: 1ファイル50 MBを超えています。`, 'danger'); continue; }
       try {
@@ -34,6 +34,7 @@
     });
   }
   function newLayer() { return { type: 'text', text: '© KYG Style', logo: null, mode: 'single', opacity: 80, rotation: 0, x: 50, y: 50, interval: 150, tileLimit:1000, count: 10, jitter: false, size: 36, color: '#ffffff', stroke: 0, strokeColor: '#000000', letterSpacing:0, lineHeight:1.2, shadowBlur:4, shadowX:2, shadowY:2, shadowColor:'#000000', logoWidth: 200, bannerColor: '#000000', bannerOpacity: 60, bannerPad: 20, position: 'bottom' }; }
+  if (!state.layers.length) state.layers.push(newLayer());
   function renderLayers() {
     const root = $('#layers'); root.replaceChildren();
     state.layers.forEach((layer, index) => {
@@ -81,7 +82,7 @@
     else { const x = w * layer.x / 100, y = h * layer.y / 100; drawOne(x, y); }
   }
   async function renderOne(file, serial, preview = false) {
-    const image = await UI.loadImageFromFile(file); const outW = clamp(+$('out-width').value || image.width, 1, 12000); const scale = outW / image.width; const w = Math.round(outW), h = Math.round(image.height * scale);
+    const image = await UI.loadImageFromFile(file); const outW = clamp(+$('#out-width').value || image.width, 1, 12000); const scale = outW / image.width; const w = Math.round(outW), h = Math.round(image.height * scale);
     UI.assertCanvasSafe(w, h); if (w > 12000 || h > 12000) throw new Error('出力画像の1辺は12,000px以下に設定してください。');
     const canvas = document.createElement('canvas'); canvas.width = w; canvas.height = h; const ctx = canvas.getContext('2d'); const format = $('#format').value; if (format === 'image/jpeg') { ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, w, h); }
     ctx.drawImage(image, 0, 0, w, h);
@@ -105,12 +106,12 @@
   UI.setupDropzone($('#dropzone'), { onFiles: validFiles, acceptDir: false });
   document.addEventListener('paste', async (e) => { const files = [...(e.clipboardData?.items || [])].filter((x) => x.type.startsWith('image/')).map((x) => x.getAsFile()).filter(Boolean); if (!files.length) { UI.toast('画像形式のクリップボードデータではありません。', 'danger'); return; } if(state.activeLayer?.type==='logo'){const f=files[0],index=state.layers.indexOf(state.activeLayer);state.activeLayer.logo=f;if($('#persist').checked)try{await Store.putBlob(`mark.logo.${index}`,f,{name:f.name});}catch{UI.toast('ブラウザ保存の容量が不足しています。','danger');}renderPreview();}else validFiles(files); });
   $('#add-layer').onclick = () => { if (state.layers.length >= 10) return UI.toast('透かしレイヤーは最大10個です。', 'danger'); state.layers.push(newLayer()); renderLayers(); renderPreview(); };
+  renderLayers(); renderPreview();
   $('#process').onclick = run; $('#cancel').onclick = () => { state.stopped = true; $('#status').textContent = '中止処理中です。完了済みの結果は保持します。'; };
   $('#zip').onclick = async () => { try { const zip = new JSZip(); const used = new Set(); state.outputs.forEach((o) => zip.file(UI.uniqueName(o.path, used), o.blob)); UI.downloadBlob(await zip.generateAsync({ type: 'blob' }), 'watermarked-images.zip'); } catch { UI.toast('ZIPを作成できませんでした。', 'danger'); } };
   $('#format').onchange = renderPreview; $('#out-width').oninput = renderPreview;
   $('#font-file').addEventListener('change', async (e) => { const file=e.target.files[0]; if(!file)return; if(file.size>5*1024*1024){UI.toast('カスタムフォントは5MB以下のファイルを選んでください。','danger');e.target.value='';return;} try{const url=URL.createObjectURL(file),font=new FontFace('KygWatermarkFont',`url(${url})`);await font.load();document.fonts.add(font);URL.revokeObjectURL(url);if($('#persist').checked)await Store.putBlob('mark.font',file,{name:file.name});renderPreview();UI.toast($('#persist').checked?'フォントを読み込み、IndexedDBに保存しました。':'フォントを読み込みました。','ok');}catch{UI.toast('フォントを読み込めませんでした。形式を確認してください。','danger');} });
   $('#reset-data').onclick = async () => { try { await Promise.all(['mark.font',...Array.from({length:10},(_,i)=>`mark.logo.${i}`)].map(id=>Store.deleteBlob(id))); Store.clearSettings('mark-images.'); UI.toast('このツールで保存したフォント・ロゴ・設定を削除しました。', 'ok'); } catch { UI.toast('保存データを削除できませんでした。', 'danger'); } };
   window.addEventListener('beforeunload', () => { state.images.forEach((x) => { if (x.thumb) URL.revokeObjectURL(x.thumb); }); state.outputs.forEach((x) => URL.revokeObjectURL(x.url)); });
-  $('#add-layer').click();
-  (async()=>{try{const savedFont=await Store.getBlob('mark.font');if(savedFont?.blob){const url=URL.createObjectURL(savedFont.blob),font=new FontFace('KygWatermarkFont',`url(${url})`);await font.load();document.fonts.add(font);URL.revokeObjectURL(url);}for(let i=0;i<10;i++){const saved=await Store.getBlob(`mark.logo.${i}`);if(!saved?.blob)continue;while(state.layers.length<=i)state.layers.push(newLayer());state.layers[i].type='logo';state.layers[i].logo=saved.blob;}renderLayers();renderPreview();}catch{UI.toast('保存済みの素材を読み込めませんでした。','danger');}})();
+  (async()=>{try{const savedFont=await Store.getBlob('mark.font');if(savedFont?.blob){const url=URL.createObjectURL(savedFont.blob),font=new FontFace('KygWatermarkFont',`url(${url})`);await font.load();document.fonts.add(font);URL.revokeObjectURL(url);}for(let i=0;i<10;i++){const saved=await Store.getBlob(`mark.logo.${i}`);if(!saved?.blob)continue;while(state.layers.length<=i)state.layers.push(newLayer());state.layers[i].type='logo';state.layers[i].logo=saved.blob;}if(!state.layers.length)state.layers.push(newLayer());renderLayers();renderPreview();}catch{UI.toast('保存済みの素材を読み込めませんでした。','danger');if(!state.layers.length){state.layers.push(newLayer());renderLayers();}}})();
 })();
