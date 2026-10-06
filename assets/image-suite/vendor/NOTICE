@@ -16,7 +16,7 @@ Third-party libraries bundled for KYG Style Tools image suite (browser, offline-
    Source: https://www.npmjs.com/package/@upscalerjs/esrgan-medium
 
 4) fflate 0.8.3 (browser ESM, lossless PNG/APNG zlib stream recompression)
-   Copyright (c) 2020-2023 Arjun Barrett
+   Copyright (c) 2026 Arjun Barrett
    License: MIT — see fflate/LICENSE
    Source: https://www.npmjs.com/package/fflate
 
