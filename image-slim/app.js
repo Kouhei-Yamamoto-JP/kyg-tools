@@ -75,18 +75,19 @@
   }
 
   async function stripJpeg(file) {
-    const a=await bytesView(file), chunks=[a.subarray(0,2)]; let p=2;
+    const a=await bytesView(file), chunks=[a.subarray(0,2)]; let p=2, ok=false;
     if(a[0]!==0xff||a[1]!==0xd8)return file;
     while(p<a.length) {
-      const start=p; if(a[p++]!==0xff){chunks.push(a.subarray(start));break;}
-      while(a[p]===0xff)p++;
+      const start=p; if(a[p++]!==0xff){return file;}
+      while(p<a.length&&a[p]===0xff)p++;
+      if(p>=a.length)return file;
       const marker=a[p++];
-      if(marker===0xda){chunks.push(a.subarray(start));break;}
-      if(marker===0xd9){chunks.push(a.subarray(start,p));break;}
+      if(marker===0xda){chunks.push(a.subarray(start)); ok=true; break;}
+      if(marker===0xd9){chunks.push(a.subarray(start,p)); ok=true; break;}
       if(marker>=0xd0&&marker<=0xd7||marker===0x01){chunks.push(a.subarray(start,p));continue;}
-      if(p+2>a.length)break;
+      if(p+2>a.length)return file;
       const len=(a[p]<<8)|a[p+1], end=p+len;
-      if(end>a.length||len<2)break;
+      if(end>a.length||len<2)return file;
       const payload=ascii(a,p+2,Math.min(32,len-2));
       const exif=marker===0xe1&&payload.startsWith('Exif\0\0');
       const isXmp=marker===0xe1&&(payload.startsWith('http://ns.adobe.com/xap/1.0/')||payload.startsWith('http://ns.adobe.com/xmp/'));
@@ -95,6 +96,7 @@
       else if(!remove)chunks.push(a.subarray(start,end));
       p=end;
     }
+    if(!ok)return file;
     const out=new Uint8Array(chunks.reduce((n,c)=>n+c.length,0));let at=0;for(const c of chunks){out.set(c,at);at+=c.length;}
     return smallerOrOriginal(file, blobFrom(out,'image/jpeg'));
   }
@@ -111,8 +113,10 @@
   }
   async function stripWebp(file) {
     const a=await bytesView(file);if(ascii(a,0,4)!=='RIFF'||ascii(a,8,4)!=='WEBP')return file;
+    const declared=u32(a,4); if(8+declared>a.length)return file;
     const chunks=[];let p=12, vp8x=null;
-    while(p+8<=a.length){const size=u32(a,p+4),end=p+8+size+(size&1);if(end>a.length)break;const type=ascii(a,p,4);if(type==='VP8X')vp8x=a.subarray(p,end);chunks.push({type,data:a.subarray(p,end)});p=end;}
+    while(p+8<=a.length && p<12+declared){const size=u32(a,p+4),end=p+8+size+(size&1);if(end>a.length)return file;const type=ascii(a,p,4);if(type==='VP8X')vp8x=a.subarray(p,end);chunks.push({type,data:a.subarray(p,end)});p=end;}
+    if(!chunks.length)return file;
     const kept=state.stripMeta?chunks.filter(c=>c.type!=='EXIF'&&c.type!=='XMP '):chunks;
     if(vp8x&&state.stripMeta&&kept.some(c=>c.type==='VP8X')){const v=vp8x.slice();v[8]&=~0x0c;kept[kept.findIndex(c=>c.type==='VP8X')].data=v;}
     const length=12+kept.reduce((n,c)=>n+c.data.length,0),out=new Uint8Array(length);out.set([82,73,70,70]);new DataView(out.buffer).setUint32(4,length-8,true);out.set([87,69,66,80],8);let at=12;for(const c of kept){out.set(c.data,at);at+=c.data.length;}

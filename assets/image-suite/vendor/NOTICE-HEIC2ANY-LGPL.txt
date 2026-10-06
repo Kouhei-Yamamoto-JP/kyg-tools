@@ -1,0 +1,3 @@
+heic2any redistributes libheif / related codecs that are typically LGPL-3.0.
+Full LGPL-3.0 text: https://www.gnu.org/licenses/lgpl-3.0.txt
+Source offers: npm package heic2any and https://github.com/alexcorvi/heic2any
