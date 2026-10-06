@@ -36,7 +36,7 @@
       row.append(thumb, name, remove); host.append(row);
     });
   }
-  function newLayer() { return { type: 'text', text: '© 私の作品', logo: null, mode: 'single', opacity: 65, rotation: 0, x: 90, y: 90, interval: 150, tileLimit:1000, count: 10, jitter: false, size: 48, color: '#ffffff', stroke: 0, strokeColor: '#000000', letterSpacing:0, lineHeight:1.2, shadowBlur:4, shadowX:2, shadowY:2, shadowColor:'#000000', logoWidth: 200, bannerColor: '#000000', bannerOpacity: 60, bannerPad: 20, position: 'bottom' }; }
+  function newLayer() { return { type: 'text', text: '© 私の作品', logo: null, mode: 'single', opacity: 65, rotation: 0, x: 90, y: 90, interval: 150, tileLimit:1000, count: 10, jitter: false, size: 48, color: '#ffffff', stroke: 0, strokeColor: '#000000', letterSpacing:0, lineHeight:1.3, shadowBlur:0, shadowX:0, shadowY:0, shadowColor:'#000000', logoWidth: 200, bannerColor: '#000000', bannerOpacity: 60, bannerPad: 20, position: 'bottom' }; }
   if (!state.layers.length) state.layers.push(newLayer());
   function renderLayers() {
     const root = $('#layers'); root.replaceChildren();
@@ -75,7 +75,7 @@
     const text = layer.mode === 'dynamic' ? layer.text.replaceAll('{連番}', String(serial)).replaceAll('{ファイル名}', filename.replace(/\.[^.]+$/, '')).replaceAll('{日付}', new Date().toLocaleDateString('ja-JP')) : layer.text;
     const drawOne = (x, y, scale = 1, alpha = 1) => {
       ctx.save(); ctx.globalAlpha = (layer.opacity / 100) * alpha; ctx.translate(x, y); ctx.rotate(layer.rotation * Math.PI / 180);
-      if (layer.type === 'text') { const size = layer.size * scale; ctx.font = `600 ${size}px "KygWatermarkFont", system-ui, sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.lineJoin = 'round'; ctx.letterSpacing = `${layer.letterSpacing || 0}px`;ctx.shadowColor=layer.shadowColor||'transparent';ctx.shadowBlur=layer.shadowBlur||0;ctx.shadowOffsetX=layer.shadowX||0;ctx.shadowOffsetY=layer.shadowY||0; const lines = text.split('\n').slice(0, 20); const lh = size * (layer.lineHeight||1.2); lines.forEach((line, i) => { const yy = (i - (lines.length - 1) / 2) * lh; if (layer.stroke) { ctx.lineWidth = layer.stroke; ctx.strokeStyle = layer.strokeColor; ctx.strokeText(line, 0, yy, w * 0.95); } ctx.fillStyle = layer.color; ctx.fillText(line, 0, yy, w * 0.95); }); }
+      if (layer.type === 'text') { const size = layer.size * scale; const hasCustom=[...document.fonts].some((f)=>f.family==='KygWatermarkFont'&&f.status==='loaded'); ctx.font = `${size}px ${hasCustom?'KygWatermarkFont, sans-serif':'sans-serif'}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.lineJoin = 'round'; ctx.letterSpacing = `${layer.letterSpacing || 0}px`;ctx.shadowColor=layer.shadowColor||'transparent';ctx.shadowBlur=layer.shadowBlur||0;ctx.shadowOffsetX=layer.shadowX||0;ctx.shadowOffsetY=layer.shadowY||0; const lines = text.split('\n').slice(0, 20); const lh = size * (layer.lineHeight||1.2); lines.forEach((line, i) => { const yy = (i - (lines.length - 1) / 2) * lh; if (layer.stroke) { ctx.lineWidth = layer.stroke; ctx.strokeStyle = layer.strokeColor; ctx.strokeText(line, 0, yy, w * 0.95); } ctx.fillStyle = layer.color; ctx.fillText(line, 0, yy, w * 0.95); }); }
       else if (image) { const iw = layer.logoWidth * scale, ih = iw * image.height / image.width; ctx.drawImage(image, -iw / 2, -ih / 2, iw, ih); }
       ctx.restore();
     };

@@ -1,6 +1,6 @@
 (() => {
   const UI = window.KygImageSuiteUI, $ = (s) => document.querySelector(s);
-  const state = { images: [], outputs: [], selectedBox: 0, selectedGuide: null, drag: null, stopped: false, busy: false };
+  const state = { images: [], outputs: [], selectedBox: 0, selectedGuide: null, drag: null, stopped: false, busy: false, pendingFiles: new Set() };
   const capImages = 20, capPixels = 100_000_000, capOne = 67_200_000, capAreas = 200, capOutputs = 400, capOutPixels = 134_400_000;
   const valid = (f) => f.type.startsWith('image/') || /\.(png|jpe?g|webp|gif|avif|bmp|ico|svg|heic|heif)$/i.test(f.name);
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -10,13 +10,16 @@
     let sum = state.images.reduce((n, x) => n + x.width * x.height, 0);
     for (const file of files) {
       if (!valid(file)) { UI.toast('対応していない画像形式です。PNG、JPG、WebP、GIF、AVIF、BMP、ICO、SVG、HEIC、HEIFを選んでください。', 'danger'); continue; }
-      if (state.images.some((x) => x.file === file || (x.file.name === file.name && x.file.size === file.size && x.file.lastModified === file.lastModified))) continue;
+      const fileKey = `${file.name}\0${file.size}\0${file.lastModified}`;
+      if (state.images.some((x) => x.file === file || (x.file.name === file.name && x.file.size === file.size && x.file.lastModified === file.lastModified)) || state.pendingFiles.has(fileKey)) continue;
       if (state.images.length >= capImages) { UI.toast('画像は最大20枚まで追加できます。', 'danger'); break; }
+      state.pendingFiles.add(fileKey);
       try { const img = await load(file); const px = img.width * img.height;
         if (px > capOne) { UI.toast(`${file.name}: ${px.toLocaleString()}画素が上限67,200,000画素を超えています。`, 'danger'); continue; }
         if (sum + px > capPixels) { UI.toast('合計画素数が100,000,000画素を超えるため、これ以上追加できません。', 'danger'); break; }
         sum += px; const item = { file, img, width: img.width, height: img.height, path: file.webkitRelativePath || file.name, v: [], h: [], boxes: [{ x: Math.floor(img.width * .1), y: Math.floor(img.height * .1), w: Math.floor(img.width * .8), h: Math.floor(img.height * .8) }] }; state.images.push(item);
       } catch { UI.toast('ファイルを読み込めませんでした。画像が破損している可能性があります。', 'danger'); }
+      finally { state.pendingFiles.delete(fileKey); }
     }
     renderList(); renderActive(); renderPreview();
   }
@@ -77,7 +80,7 @@
     for(let i=0;i<all.length;i++){if(state.stopped)break;const {item,r}=all[i];try{const c=document.createElement('canvas');c.width=r.w;c.height=r.h;const cctx=c.getContext('2d');if(format==='image/jpeg'){cctx.fillStyle='#fff';cctx.fillRect(0,0,r.w,r.h);}cctx.drawImage(item.img,r.x,r.y,r.w,r.h,0,0,r.w,r.h);const blob=await UI.canvasToBlob(c,format,quality);c.width=0;c.height=0;const name=outName(item,i+1,ext),path=item.path.split('/').slice(0,-1).concat(name).join('/'),url=URL.createObjectURL(blob);state.outputs.push({name,path,blob,url});const figure=document.createElement('div');figure.className='output-row';const im=document.createElement('img');im.src=url;im.alt='';const cap=document.createElement('span');cap.textContent=`${name} · ${r.w}×${r.h}`;const b=document.createElement('button');b.className='btn save';b.textContent='保存';b.onclick=()=>UI.downloadBlob(blob,name);figure.append(im,cap,b);$('#outputs').append(figure);}catch(e){UI.toast(`${item.file.name}: ${e.message}`,'danger');}$('#progress').value=i+1;$('#status').textContent=`${i+1}/${all.length}領域を処理しました。`;await new Promise(requestAnimationFrame);}
     state.busy=false;$('#process').disabled=false;$('#cancel').disabled=true;$('#zip').disabled=!state.outputs.length;$('#status').textContent=state.stopped?`中止しました。完了した${state.outputs.length}領域は保存できます。`:`${state.outputs.length}領域を書き出しました。`;
   }
-  $('#choose').onclick=()=>$('#files').click();$('#choose-folder').onclick=()=>$('#folder').click();$('#files').onchange=e=>add([...e.target.files]);$('#folder').onchange=e=>add([...e.target.files]);UI.setupDropzone($('#dropzone'),{onFiles:add});
+  $('#choose').onclick=()=>$('#files').click();$('#choose-folder').onclick=()=>$('#folder').click();$('#folder').onchange=e=>add([...e.target.files]);UI.setupDropzone($('#dropzone'),{onFiles:add});
   document.addEventListener('paste',e=>{const files=[...(e.clipboardData?.items||[])].filter(x=>x.type.startsWith('image/')).map(x=>x.getAsFile()).filter(Boolean);if(files.length)add(files);else UI.toast('画像形式のクリップボードデータではありません。','danger');});
   $('#mode').onchange=()=>{renderActive();renderPreview();};$('#active-image').onchange=()=>renderPreview();['rows','cols','gap','tile-w','tile-h','tile-gap'].forEach(id=>$('#'+id).addEventListener('input',renderPreview));
   $('#add-v').onclick=()=>{const x=active();if(x&&x.v.length+x.h.length<capAreas-1){x.v.push(Math.round(x.width/2));renderPreview();}};$('#add-h').onclick=()=>{const x=active();if(x&&x.v.length+x.h.length<capAreas-1){x.h.push(Math.round(x.height/2));renderPreview();}};$('#clear-lines').onclick=()=>{const x=active();if(x){x.v=[];x.h=[];renderPreview();}};
