@@ -1,0 +1,18 @@
+Third-party libraries bundled for KYG Style Tools image suite (browser, offline-capable).
+
+1) @tensorflow/tfjs 4.11.0
+   Copyright Google LLC and TensorFlow.js contributors
+   License: Apache License 2.0 — see LICENSE-TFJS.txt
+   Source: https://www.npmjs.com/package/@tensorflow/tfjs
+
+2) upscaler (UpscalerJS) 1.0.0
+   Copyright (c) 2022 Kevin Scott
+   License: MIT — see LICENSE-UPSCALER.txt
+   Source: https://www.npmjs.com/package/upscaler
+
+3) @upscalerjs/esrgan-medium 1.0.0 (UMD model stubs x2/x4)
+   Copyright (c) 2022 Kevin Scott
+   License: MIT — see LICENSE-ESRGAN.txt
+   Source: https://www.npmjs.com/package/@upscalerjs/esrgan-medium
+
+These files were obtained from the official npm packages (npm pack), not from any third-party website mirror.

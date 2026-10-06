@@ -1,0 +1,9 @@
+ESRGAN Medium model weights for UpscalerJS (x2 / x4).
+
+Package: @upscalerjs/esrgan-medium 1.0.0
+Copyright (c) 2022 Kevin Scott
+License: MIT — see LICENSE in this directory
+Source: https://www.npmjs.com/package/@upscalerjs/esrgan-medium
+
+Model files (model.json and group1-shard1of1.bin) were extracted from the official npm package via npm pack.
+Architecture: RDN (medium). Dataset attribution as documented by UpscalerJS / DIV2K training metadata in the package.
