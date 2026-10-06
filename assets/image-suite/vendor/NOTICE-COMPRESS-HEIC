@@ -1,0 +1,8 @@
+Additional third-party libraries for compression and HEIC decode (KYG Style Tools).
+
+1) heic2any 0.0.4 — MIT (Alex Corvi). Browser HEIC/HEIF → PNG/JPEG. May embed libheif-derived WASM; see package docs. Source: npm heic2any
+2) @jsquash/oxipng 2.3.0 — Apache-2.0 (Squoosh/oxipng WASM). PNG lossless optimize. Source: npm @jsquash/oxipng
+3) gifsicle-wasm-browser 1.5.19 — MIT (wrapper). GIF optimize in browser. Underlying gifsicle is GPL-2.0; wrapper MIT — report both. Source: npm gifsicle-wasm-browser
+4) SVG tidy: prefer lightweight in-app sanitizer if svgo browser bundle is impractical; if svgo used, MIT.
+
+Obtained via npm pack. Do not copy from reference websites.

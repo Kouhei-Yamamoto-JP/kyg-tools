@@ -2,14 +2,14 @@
   const UI = window.KygImageSuiteUI, $ = (s) => document.querySelector(s);
   const state = { images: [], outputs: [], selectedBox: 0, selectedGuide: null, drag: null, stopped: false, busy: false };
   const capImages = 20, capPixels = 100_000_000, capOne = 67_200_000, capAreas = 200, capOutputs = 400, capOutPixels = 134_400_000;
-  const valid = (f) => f.type.startsWith('image/') || /\.(png|jpe?g|webp|gif|avif|bmp|ico|svg)$/i.test(f.name);
+  const valid = (f) => f.type.startsWith('image/') || /\.(png|jpe?g|webp|gif|avif|bmp|ico|svg|heic|heif)$/i.test(f.name);
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
   const num = (sel, d) => Math.max(0, Number($(sel).value) || d);
   function load(file) { return UI.loadImageFromFile(file); }
   async function add(files) {
     let sum = state.images.reduce((n, x) => n + x.width * x.height, 0);
     for (const file of files) {
-      if (!valid(file)) { UI.toast('対応していない画像形式です。PNG、JPG、WebP、GIF、AVIF、BMP、ICO、SVGを選んでください。', 'danger'); continue; }
+      if (!valid(file)) { UI.toast('対応していない画像形式です。PNG、JPG、WebP、GIF、AVIF、BMP、ICO、SVG、HEIC、HEIFを選んでください。', 'danger'); continue; }
       if (state.images.some((x) => x.file === file)) continue;
       if (state.images.length >= capImages) { UI.toast('画像は最大20枚まで追加できます。', 'danger'); break; }
       try { const img = await load(file); const px = img.width * img.height;

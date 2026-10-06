@@ -7,7 +7,7 @@
     app.innerHTML = `
       <section class="panel">
         <div class="dropzone" id="dz"><p>写真を追加（最大50枚・合計1GB）。初回の解析エンジン読込に時間がかかることがあります。</p>
-          <input type="file" accept="image/*,.cr2,.cr3,.nef,.arw,.raf,.dng,.tif,.tiff" multiple hidden>
+          <input type="file" accept="image/*,.heic,.heif,.cr2,.cr3,.nef,.arw,.raf,.dng,.tif,.tiff" multiple hidden>
           <button type="button" class="btn" id="pick">ファイルを選ぶ</button>
           <button type="button" class="btn ghost" id="pickDir">フォルダー</button></div>
         <p class="hint">位置情報は外部地図へ送りません。画面を離れると読み取り結果は破棄されます。</p>

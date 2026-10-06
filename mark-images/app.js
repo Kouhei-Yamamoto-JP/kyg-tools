@@ -2,7 +2,7 @@
   const UI = window.KygImageSuiteUI;
   const Store = window.KygImageSuiteStorage;
   const $ = (s) => document.querySelector(s);
-  const allowed = /\.(png|jpe?g|webp|gif|avif|bmp|ico|svg)$/i;
+  const allowed = /\.(png|jpe?g|webp|gif|avif|bmp|ico|svg|heic|heif)$/i;
   const state = { images: [], layers: [], outputs: [], activeLayer: null, stopped: false, busy: false };
   const label = (text) => { const e = document.createElement('label'); e.textContent = text; return e; };
   const field = (caption, control) => { const wrap = document.createElement('div'); wrap.className = 'field'; const l = label(caption); if (control.id) l.htmlFor = control.id; wrap.append(l, control); return wrap; };
@@ -10,7 +10,7 @@
   async function validFiles(files) {
     let pixels = state.images.reduce((n, x) => n + (x.width || 0) * (x.height || 0), 0);
     for (const file of files) {
-      if (!(file.type.startsWith('image/') || allowed.test(file.name))) { UI.toast('対応していない画像形式です。PNG、JPG、WebP、GIF、AVIF、BMP、ICO、SVGを選んでください。', 'danger'); continue; }
+      if (!(file.type.startsWith('image/') || allowed.test(file.name))) { UI.toast('対応していない画像形式です。PNG、JPG、WebP、GIF、AVIF、BMP、ICO、SVG、HEIC、HEIFを選んでください。', 'danger'); continue; }
       if (state.images.some((x) => x.file === file)) continue;
       if (state.images.length >= 20) { UI.toast('画像は最大20枚まで追加できます。', 'danger'); break; }
       if (file.size > 50 * 1024 * 1024) { UI.toast(`${file.name}: 1ファイル50 MBを超えています。`, 'danger'); continue; }
@@ -18,7 +18,7 @@
         const image = await UI.loadImageFromFile(file), size = image.width * image.height;
         if (size > 67_200_000) { UI.toast(`${file.name}: ${size.toLocaleString()}画素が上限67,200,000画素を超えています。`, 'danger'); continue; }
         if (pixels + size > 100_000_000) { UI.toast('元画像の合計画素数が100,000,000画素を超えます。', 'danger'); break; }
-        pixels += size; state.images.push({ file, width: image.width, height: image.height, path: file.webkitRelativePath || file.name });
+        pixels += size; state.images.push({ file, image, width: image.width, height: image.height, path: file.webkitRelativePath || file.name });
       } catch { UI.toast(`${file.name}: ファイルを読み込めませんでした。画像が破損している可能性があります。`, 'danger'); }
     }
     renderImages(); renderPreview();
@@ -27,7 +27,7 @@
     const host = $('#image-list'); host.replaceChildren();
     state.images.forEach((item, i) => {
       const row = document.createElement('div'); row.className = 'image-row';
-      if(item.thumb)URL.revokeObjectURL(item.thumb);const thumb = document.createElement('img'); thumb.alt = ''; thumb.src = URL.createObjectURL(item.file); item.thumb = thumb.src;
+      if(item.thumb)URL.revokeObjectURL(item.thumb);const thumb = document.createElement('img'); thumb.alt = ''; thumb.src = URL.createObjectURL(item.image.sourceBlob || item.file); item.thumb = thumb.src;
       const name = document.createElement('span'); name.textContent = `${item.file.name} · ${item.width} × ${item.height} px · ${UI.formatBytes(item.file.size)}`;
       const remove = document.createElement('button'); remove.className = 'btn remove'; remove.textContent = '取り除く'; remove.onclick = () => { URL.revokeObjectURL(item.thumb); state.images.splice(i, 1); renderImages(); renderPreview(); };
       row.append(thumb, name, remove); host.append(row);
@@ -41,7 +41,7 @@
       card.addEventListener('click',()=>{state.activeLayer=layer;});
       card.addEventListener('dragover',e=>{if(layer.type==='logo'){e.preventDefault();card.classList.add('dragover');}});
       card.addEventListener('dragleave',()=>card.classList.remove('dragover'));
-      card.addEventListener('drop',async e=>{if(layer.type!=='logo')return;e.preventDefault();card.classList.remove('dragover');const f=[...(e.dataTransfer?.files||[])].find(x=>x.type.startsWith('image/'));if(f){layer.logo=f;if($('#persist').checked)try{await Store.putBlob(`mark.logo.${index}`,f,{name:f.name});}catch{UI.toast('ブラウザ保存の容量が不足しています。','danger');}renderPreview();}});
+      card.addEventListener('drop',async e=>{if(layer.type!=='logo')return;e.preventDefault();card.classList.remove('dragover');const f=[...(e.dataTransfer?.files||[])].find(x=>x.type.startsWith('image/')||allowed.test(x.name));if(f){layer.logo=f;if($('#persist').checked)try{await Store.putBlob(`mark.logo.${index}`,f,{name:f.name});}catch{UI.toast('ブラウザ保存の容量が不足しています。','danger');}renderPreview();}});
       const top = document.createElement('div'); top.className = 'layer-top'; const title = document.createElement('strong'); title.textContent = `レイヤー ${index + 1}`;
       const actions = document.createElement('div'); actions.className = 'mini-actions';
       [['↑', -1], ['↓', 1]].forEach(([text, delta]) => { const b = document.createElement('button'); b.type = 'button'; b.className = 'btn'; b.textContent = delta < 0 ? '前へ' : '後ろへ'; b.onclick = () => { const j = index + delta; if (j >= 0 && j < state.layers.length) { [state.layers[j], state.layers[index]] = [state.layers[index], state.layers[j]]; renderLayers(); renderPreview(); } }; actions.append(b); });
@@ -50,7 +50,7 @@
       const type = document.createElement('select'); type.innerHTML = '<option value="text">文字列</option><option value="logo">ロゴ画像</option>'; type.value = layer.type;
       grid.append(field('素材', type));
       if (layer.type === 'text') { const text = document.createElement('textarea'); text.maxLength = 1000; text.rows = 2; text.value = layer.text; text.addEventListener('input', () => { layer.text = text.value; renderPreview(); }); grid.append(field('文字列（最大1,000文字・20行）', text)); }
-      else { const file = document.createElement('input'); file.type = 'file'; file.accept = 'image/png,image/jpeg,image/webp,image/svg+xml'; file.addEventListener('change', async () => { const f = file.files[0]; if (f) { layer.logo = f; if ($('#persist').checked) { try { await Store.putBlob(`mark.logo.${index}`, f, { name: f.name }); } catch { UI.toast('ブラウザ保存の容量が不足しています。保存データを整理してください。', 'danger'); } } renderPreview(); } }); grid.append(field('ロゴ画像', file));
+      else { const file = document.createElement('input'); file.type = 'file'; file.accept = 'image/png,image/jpeg,image/webp,image/svg+xml,.heic,.heif'; file.addEventListener('change', async () => { const f = file.files[0]; if (f) { layer.logo = f; if ($('#persist').checked) { try { await Store.putBlob(`mark.logo.${index}`, f, { name: f.name }); } catch { UI.toast('ブラウザ保存の容量が不足しています。保存データを整理してください。', 'danger'); } } renderPreview(); } }); grid.append(field('ロゴ画像', file));
         const width = control('number', layer.logoWidth, 10, 800); width.addEventListener('input', () => { layer.logoWidth = clamp(+width.value, 10, 800); renderPreview(); }); grid.append(field('ロゴ幅（px）', width)); }
       const mode = document.createElement('select'); mode.innerHTML = '<option value="single">単一配置（固定）</option><option value="tile">全面敷き詰め（グリッド）</option><option value="random">散布配置（ランダム）</option><option value="dynamic">動的テキスト合成</option><option value="banner">帯状バナー（ヘッダー/フッター）</option>'; mode.value = layer.mode; mode.onchange = () => { layer.mode = mode.value; renderLayers(); renderPreview(); }; grid.append(field('配置方法', mode));
       const opacity = control('number', layer.opacity, 0, 100); opacity.addEventListener('input', () => { layer.opacity = clamp(+opacity.value, 0, 100); renderPreview(); }); grid.append(field('不透明度（%）', opacity));

@@ -174,20 +174,45 @@
     }
   }
 
-  function loadImageFromFile(file) {
+  function imageFromBlob(blob, name = '') {
     return new Promise((resolve, reject) => {
-      const url = URL.createObjectURL(file);
+      const url = URL.createObjectURL(blob);
       const img = new Image();
       img.onload = () => {
         URL.revokeObjectURL(url);
+        img.sourceBlob = blob;
+        img.sourceName = name;
         resolve(img);
       };
       img.onerror = () => {
         URL.revokeObjectURL(url);
-        reject(new Error('画像を読み込めませんでした: ' + file.name));
+        reject(new Error('画像を読み込めませんでした: ' + name));
       };
       img.src = url;
     });
+  }
+
+  let heicDecoderPromise;
+  function loadHeicDecoder() {
+    if (!heicDecoderPromise) heicDecoderPromise = new Promise((resolve, reject) => {
+      if (global.heic2any) return resolve(global.heic2any);
+      const script = document.createElement('script');
+      script.src = '/assets/image-suite/vendor/heic2any.min.js';
+      script.onload = () => global.heic2any ? resolve(global.heic2any) : reject(new Error('HEICデコーダを読み込めませんでした。'));
+      script.onerror = () => reject(new Error('HEICデコーダを読み込めませんでした。'));
+      document.head.appendChild(script);
+    });
+    return heicDecoderPromise;
+  }
+
+  async function loadImageFromFile(file) {
+    const isHeic = /\.(heic|heif)$/i.test(file.name) || /image\/(heic|heif|heic-sequence|heif-sequence)/i.test(file.type);
+    if (!isHeic) return imageFromBlob(file, file.name);
+    try { return await imageFromBlob(file, file.name); } catch (_) { /* use decoder fallback */ }
+    const decode = await loadHeicDecoder();
+    const converted = await decode({ blob: file, toType: 'image/png' });
+    const blob = Array.isArray(converted) ? converted[0] : converted;
+    return imageFromBlob(blob, file.name);
   }
 
   function canvasToBlob(canvas, type, quality) {
@@ -209,6 +234,7 @@
     uniqueName,
     setupDropzone,
     loadImageFromFile,
+    isHeicFile: (file) => /\.(heic|heif)$/i.test(file.name) || /image\/(heic|heif)/i.test(file.type),
     canvasToBlob,
   };
 
