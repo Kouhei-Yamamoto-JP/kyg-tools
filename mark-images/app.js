@@ -64,6 +64,7 @@
       if (layer.mode === 'random') { const c = control('number', layer.count, 1, 50); c.addEventListener('input', () => { layer.count = clamp(+c.value, 1, 50); renderPreview(); }); grid.append(field('散布する個数', c)); const j = document.createElement('input'); j.type = 'checkbox'; j.checked = layer.jitter; j.onchange = () => { layer.jitter = j.checked; renderPreview(); }; grid.append(field('角度・大きさ・透明度をランダムに変える', j)); }
       const auto = document.createElement('input'); auto.type = 'checkbox'; auto.checked = !!layer.autoScale; auto.addEventListener('change', () => { layer.autoScale = auto.checked; renderPreview(); }); grid.append(field('画像の幅に合わせてサイズを変える', auto));
       const bold = document.createElement('input'); bold.type = 'checkbox'; bold.checked = !!layer.bold; bold.addEventListener('change', () => { layer.bold = bold.checked; renderPreview(); }); grid.append(field('太字', bold));
+      const sh = document.createElement('input'); sh.type = 'checkbox'; sh.checked = !!layer.shadow; sh.addEventListener('change', () => { layer.shadow = sh.checked; renderPreview(); }); grid.append(field('影を付ける', sh));
             if (layer.type === 'text') { for (const [key, cap, min, max, step] of [['size', '文字サイズ（px）', 10, 800, 1], ['stroke', '縁取り幅（px）', 0, 20, 1],['letterSpacing','文字間隔（px）',-5,50,1],['lineHeight','行間（倍率）',.8,3,.1],['shadowBlur','影のぼかし（px）',0,50,1],['shadowX','影の距離X（px）',-50,50,1],['shadowY','影の距離Y（px）',-50,50,1]]) { const c = control('number', layer[key], min, max, step); c.addEventListener('input', () => { layer[key] = clamp(+c.value, min, max); renderPreview(); }); grid.append(field(cap, c)); } const color = control('color', layer.color); color.oninput = () => { layer.color = color.value; renderPreview(); }; grid.append(field('文字色', color));const strokeColor=control('color',layer.strokeColor);strokeColor.oninput=()=>{layer.strokeColor=strokeColor.value;renderPreview();};grid.append(field('縁取り色',strokeColor));const shadowColor=control('color',layer.shadowColor);shadowColor.oninput=()=>{layer.shadowColor=shadowColor.value;renderPreview();};grid.append(field('影の色',shadowColor)); }
       if (layer.mode === 'banner') { const color = control('color', layer.bannerColor); color.oninput = () => { layer.bannerColor = color.value; renderPreview(); }; grid.append(field('帯の背景色', color));const alpha=control('number',layer.bannerOpacity,0,100);alpha.oninput=()=>{layer.bannerOpacity=clamp(+alpha.value,0,100);renderPreview();};grid.append(field('帯の不透明度（%）',alpha));const pad=control('number',layer.bannerPad,0,200);pad.oninput=()=>{layer.bannerPad=clamp(+pad.value,0,200);renderPreview();};grid.append(field('帯の上下余白（px）',pad)); const pos = document.createElement('select'); pos.innerHTML = '<option value="top">上部</option><option value="center">中央</option><option value="bottom">下部</option>'; pos.value = layer.position; pos.onchange = () => { layer.position = pos.value; renderPreview(); }; grid.append(field('帯の位置', pos)); }
       card.append(grid); root.append(card);
@@ -106,14 +107,14 @@
     let stampH = Math.max(1, textH + 2 * pad);
     const angle = layer.mode === 'banner' ? 0 : (layer.rotation || 0);
     const aabb0 = rotAABB(stampW, stampH, angle);
-    const Ci = 12000;
-    const C = Math.min(1, 0.95 * imgW / Math.max(1, aabb0.width), 0.95 * imgH / Math.max(1, aabb0.height), Ci / stampW, Ci / stampH, Math.sqrt(16e6 / (stampW * stampH)));
+    const maxEdge = 12000;
+    const C = Math.min(1, 0.95 * imgW / Math.max(1, aabb0.width), 0.95 * imgH / Math.max(1, aabb0.height), maxEdge / stampW, maxEdge / stampH, Math.sqrt(16e6 / (stampW * stampH)));
     const M = Math.max(1, Math.floor(stampW * C));
     const K = Math.max(1, Math.floor(stampH * C));
     const canvas = document.createElement('canvas');
     canvas.width = M; canvas.height = K;
     const ctx = canvas.getContext('2d');
-    ctx.scale(C * canvas.width / M, C * canvas.height / K);
+    ctx.scale(C, C); // stamp bitmap is M×K logical pixels
     ctx.font = font;
     ctx.textBaseline = 'top';
     ctx.fillStyle = layer.color;
@@ -135,7 +136,7 @@
       const textH = layer.type === 'text' ? layer.size * (layer.autoScale ? w / 1000 : 1) * 1.5 : layer.logoWidth * (layer.autoScale ? w / 1000 : 1);
       const bandH = Math.min(h, textH + layer.bannerPad * 2);
       const y = layer.position === 'top' ? 0 : layer.position === 'center' ? (h - bandH) / 2 : h - bandH;
-      ctx.save(); ctx.globalAlpha = (layer.bannerOpacity || 70) / 100; ctx.fillStyle = layer.bannerColor; ctx.fillRect(0, y, w, bandH); ctx.restore();
+      ctx.save(); ctx.globalAlpha = (Number.isFinite(layer.bannerOpacity)?layer.bannerOpacity:70) / 100; ctx.fillStyle = layer.bannerColor; ctx.fillRect(0, y, w, bandH); ctx.restore();
     }
     if (layer.type === 'text') {
       const stamp = buildTextStamp(layer, w, h, serial, filename);
@@ -145,8 +146,8 @@
         if (layer.shadow) {
           const s = layer.autoScale ? w / 1000 : 1;
           ctx.shadowColor = layer.shadowColor || '#000';
-          ctx.shadowBlur = (layer.shadowBlur || 8) * s;
-          ctx.shadowOffsetX = ctx.shadowOffsetY = (layer.shadowX || layer.shadowY || 3) * s;
+          ctx.shadowBlur = (Number.isFinite(layer.shadowBlur)?layer.shadowBlur:8) * s;
+          ctx.shadowOffsetX = (Number.isFinite(layer.shadowX)?layer.shadowX:3) * s; ctx.shadowOffsetY = (Number.isFinite(layer.shadowY)?layer.shadowY:3) * s;
         }
         ctx.translate(px, py);
         ctx.rotate((stamp.angle || 0) * Math.PI / 180);
