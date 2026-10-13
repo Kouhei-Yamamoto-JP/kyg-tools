@@ -81,7 +81,7 @@
     else { const x = w * layer.x / 100, y = h * layer.y / 100; drawOne(x, y); }
   }
   async function renderOne(file, serial, preview = false) {
-    const image = await UI.loadImageFromFile(file); const outW = clamp(+$('out-width').value || image.width, 1, 12000); const scale = outW / image.width; const w = Math.round(outW), h = Math.round(image.height * scale);
+    const image = await UI.loadImageFromFile(file); const outW = clamp(+$('#out-width').value || image.width, 1, 12000); const scale = outW / image.width; const w = Math.round(outW), h = Math.round(image.height * scale);
     UI.assertCanvasSafe(w, h); if (w > 12000 || h > 12000) throw new Error('出力画像の1辺は12,000px以下に設定してください。');
     const canvas = document.createElement('canvas'); canvas.width = w; canvas.height = h; const ctx = canvas.getContext('2d'); const format = $('#format').value; if (format === 'image/jpeg') { ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, w, h); }
     ctx.drawImage(image, 0, 0, w, h);
