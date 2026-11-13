@@ -328,7 +328,7 @@
     name = UI.uniqueName(name, used);
     it.outName = name;
     it.blob = blob;
-    it.status = it.status || '完了';
+    it.status = /完了/.test(it.status || '') ? it.status : '完了';
   }
 
   function mimeForBackground(format, item) { return format === 'keep' ? (item.type || (/\.jpe?g$/i.test(item.name) ? 'image/jpeg' : '')) : format; }
