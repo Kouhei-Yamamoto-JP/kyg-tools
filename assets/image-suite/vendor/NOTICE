@@ -21,3 +21,9 @@ Third-party libraries bundled for KYG Style Tools image suite (browser, offline-
    Source: https://www.npmjs.com/package/fflate
 
 These files were obtained from the official npm packages (npm pack), not from any third-party website mirror.
+
+5) @ffmpeg/ffmpeg 0.11.1 and @ffmpeg/core-st 0.11.1 (browser video conversion, single-thread core)
+   Copyright (c) 2019 Jerome Wu and FFmpeg contributors
+   License: MIT for the wrapper and core package — see LICENSE-FFMPEG-WASM.txt
+   Source: https://www.npmjs.com/package/@ffmpeg/ffmpeg and https://www.npmjs.com/package/@ffmpeg/core-st
+   The core-st build uses FFmpeg and bundled codecs; see the FFmpeg project licensing information for their respective terms.
