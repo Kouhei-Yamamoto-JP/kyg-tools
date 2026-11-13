@@ -18,15 +18,15 @@
   <header class="header"><p class="brand"><a href="/">← tools.kyg-style.com</a></p><h1>画像への透かし合成</h1><p class="subtitle">文字やロゴを重ねて、複数の画像へまとめて書き出します。</p></header>
   <div data-tool-nav></div>
   <section class="panel">
-    <h2>画像を追加</h2>
+    <h2>1. 画像を追加</h2>
     <div class="dropzone" id="dropzone"><strong>画像をここへドロップ</strong><p>または下のボタンから選択。画像はブラウザ内で処理します。</p><div class="actions"><button class="btn" id="choose">ファイルを選ぶ</button><button class="btn" id="choose-folder">フォルダーを選ぶ</button></div><input id="files" type="file" accept="image/*,.svg,.heic,.heif" multiple hidden><input id="folder" type="file" accept="image/*,.svg,.heic,.heif" webkitdirectory multiple hidden></div>
     <p class="privacy-note">選択された画像はお使いの端末（ブラウザ）内でのみ処理されます。外部サーバーへ送信されることはありません。</p>
     <p class="hint">PNG、JPG、WebP、GIF、AVIF、BMP、ICO、SVG / 最大20枚・合計1億画素・1枚6,720万画素まで。画像を追加する前でも設定できます。</p>
     <div id="image-list" class="image-list"></div>
   </section>
-  <section class="panel"><div class="panel-heading"><h2>透かしレイヤー</h2><button class="btn" id="add-layer">レイヤーを追加</button></div><div id="layers"></div></section>
+  <section class="panel"><div class="panel-heading"><h2>2. 透かしを調整</h2><button class="btn" id="add-layer">レイヤーを追加</button></div><div id="layers"></div></section>
   <section class="panel">
-    <h2>出力とプレビュー</h2>
+    <h2>3. プレビューを確認して保存</h2>
     <div class="field-row"><div class="field"><label for="format">出力形式</label><select id="format"><option value="image/png">PNG</option><option value="image/jpeg">JPG</option><option value="image/webp">WebP</option></select></div><div class="field"><label for="out-width">保存幅（0で元サイズ）</label><input id="out-width" type="number" min="0" max="12000" value="0"></div></div>
     <div class="preview-box" id="preview"></div><div id="outputs" class="outputs"></div>
     <div class="actions"><button class="btn primary" id="process">画像を書き出す</button><button class="btn danger" id="cancel" disabled>処理を中止する</button><button class="btn" id="zip" disabled>ZIPでまとめて保存</button></div>

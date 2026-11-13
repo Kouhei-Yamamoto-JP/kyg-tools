@@ -42,7 +42,7 @@
     const w = item.width, h = item.height;
     if (mode === 'grid') {
       const rows = clamp(Math.floor(num('#rows', 2)), 1, 50), cols = clamp(Math.floor(num('#cols', 2)), 1, 50); if (rows * cols > capAreas) throw Error('1画像あたりの上限200領域を超えています。');
-      const gap = clamp(num('#gap', 0), 0, 20) / 100; const dx = w * gap / cols, dy = h * gap / rows; const out = [];
+      const gap = clamp(num('#gap', 0), 0, 100) / 100; const dx = w * gap / cols, dy = h * gap / rows; const out = [];
       for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) { const x0 = Math.round(c * w / cols + (c ? dx / 2 : 0)), x1 = Math.round((c + 1) * w / cols - (c < cols - 1 ? dx / 2 : 0)); const y0 = Math.round(r * h / rows + (r ? dy / 2 : 0)), y1 = Math.round((r + 1) * h / rows - (r < rows - 1 ? dy / 2 : 0)); if (x1 > x0 && y1 > y0) out.push({ x:x0,y:y0,w:x1-x0,h:y1-y0 }); }
       return out;
     }

@@ -2,10 +2,11 @@
   const UI = window.KygImageSuiteUI;
   const Store = window.KygImageSuiteStorage;
   const app = document.getElementById('app');
-  const PRESETS = [320,480,640,800,1024,1280,1600,1920,2048,2560,3840];
+  const PRESETS = [320,480,640,800,1024,1200,1280,1600,1920,2048,2560,3840];
   const state = {
     items: [], abort: false, controller: null, running: false,
-    outFmt: 'keep', resizeMode: 'original', sizePx: 1280,
+    outFmt: 'keep', resizeMode: 'original', widthPx: 1200, heightPx: 1200,
+    rotation: 0, flipX: false, flipY: false, quality: 0.92, bg: '#ffffff',
     scale: 1, ai: false,
     rename: { prefix: 'img', pattern: 'prefix_num', sep: '_', start: 1, digits: 3 },
   };
@@ -40,13 +41,16 @@
   function render() {
     app.innerHTML = `
       <section class="panel">
+        <h2>1. 画像を追加</h2>
         <div class="dropzone" id="dz"><p>画像を追加（PNG/JPG/WebP/GIF/HEIC・最大50枚）</p>
           <input type="file" accept="image/*,.heic,.heif" multiple hidden>
-          <button type="button" class="btn" id="pick">ファイルを選ぶ</button></div>
+          <button type="button" class="btn" id="pick">ファイルを選ぶ</button>
+          <button type="button" class="btn ghost" id="pickDir">フォルダーを追加</button></div>
+        <p class="hint">画像をコピーしてこのページで貼り付けても追加できます。HEICを読み込めない場合は、端末内デコーダを読めなかった旨を表示します。</p>
         <p class="hint" id="count">0 / 50</p>
       </section>
       <section class="panel">
-        <h2>出力設定</h2>
+        <h2>2. 調整</h2>
         <div class="field-row">
           <div class="field"><label>出力形式</label>
             <select id="fmt"><option value="keep">元の形式</option><option value="image/png">PNG</option>
@@ -63,10 +67,16 @@
               <option value="ai4">端末内で4倍に高画質化</option>
             </select></div>
           <div class="field"><label>サイズ(px)</label>
-            <select id="preset">${PRESETS.map(p=>`<option value="${p}" ${p===1280?'selected':''}>${p}</option>`).join('')}
-            </select>
-            <input type="number" id="sizePx" min="1" max="12000" value="1280">
+            <label for="widthPx">幅(px)</label><select id="preset">${PRESETS.map(p=>`<option value="${p}" ${p===1200?'selected':''}>${p}</option>`).join('')}</select>
+            <input type="number" id="widthPx" min="1" max="12000" value="1200">
+            <label for="heightPx">高さ(px)</label><input type="number" id="heightPx" min="1" max="12000" value="1200">
           </div>
+        </div>
+        <div class="field-row">
+          <div class="field"><label for="rotation">回転</label><select id="rotation"><option value="0">回転なし</option><option value="90">右へ90°</option><option value="180">180°</option><option value="270">左へ90°</option></select></div>
+          <label><input type="checkbox" id="flipX"> 左右反転</label><label><input type="checkbox" id="flipY"> 上下反転</label>
+          <div class="field"><label for="quality">JPG・WebPの画質 <span id="qualityValue">92</span></label><input type="range" id="quality" min="1" max="100" value="92"></div>
+          <div class="field"><label for="bg">透明部分の背景色（JPG等）</label><input type="color" id="bg" value="#ffffff"></div>
         </div>
         <h3>自動リネーム</h3>
         <div class="field-row">
@@ -91,7 +101,7 @@
         </div>
       </section>
       <section class="panel">
-        <h2>変換リスト</h2>
+        <h2>3. 結果を確認して保存</h2>
         <div class="table-wrap"><table class="suite-table" id="tbl">
           <thead><tr><th>変換前</th><th>形式・寸法</th><th>容量</th><th>変換後名</th><th>状態</th><th>操作</th></tr></thead>
           <tbody></tbody>
@@ -105,6 +115,11 @@
       try {
         document.getElementById('fmt').value = saved.outFmt || 'keep';
         document.getElementById('prefix').value = saved.prefix || 'img';
+        for (const id of ['rotation','bg']) if (saved[id] != null) document.getElementById(id).value = saved[id];
+        for (const id of ['flipX','flipY']) if (saved[id] != null) document.getElementById(id).checked = saved[id];
+        if (saved.quality != null) { document.getElementById('quality').value = Math.round(saved.quality*100); document.getElementById('qualityValue').textContent = Math.round(saved.quality*100); }
+        if (saved.widthPx) document.getElementById('widthPx').value = saved.widthPx;
+        if (saved.heightPx) document.getElementById('heightPx').value = saved.heightPx;
       } catch {}
     }
   }
@@ -112,7 +127,13 @@
   function syncSettings() {
     state.outFmt = document.getElementById('fmt').value;
     state.resizeMode = document.getElementById('rmode').value;
-    state.sizePx = +document.getElementById('sizePx').value;
+    state.widthPx = +document.getElementById('widthPx').value;
+    state.heightPx = +document.getElementById('heightPx').value;
+    state.rotation = +document.getElementById('rotation').value;
+    state.flipX = document.getElementById('flipX').checked;
+    state.flipY = document.getElementById('flipY').checked;
+    state.quality = +document.getElementById('quality').value / 100;
+    state.bg = document.getElementById('bg').value;
     state.rename = {
       prefix: document.getElementById('prefix').value || 'img',
       pattern: document.getElementById('pattern').value,
@@ -120,7 +141,7 @@
       start: +document.getElementById('start').value || 1,
       digits: Math.min(6, Math.max(1, +document.getElementById('digits').value || 3)),
     };
-    Store.setSetting('workbench.settings', { outFmt: state.outFmt, prefix: state.rename.prefix });
+    Store.setSetting('workbench.settings', { outFmt: state.outFmt, prefix: state.rename.prefix, rotation: state.rotation, flipX: state.flipX, flipY: state.flipY, quality: state.quality, bg: state.bg, widthPx: state.widthPx, heightPx: state.heightPx });
   }
 
   function buildName(item, index, ext) {
@@ -165,11 +186,11 @@
     if (m === 'original') return { w: w0, h: h0 };
     if (m === 'x2' || m === 'ai2') return { w: w0*2, h: h0*2 };
     if (m === 'x4' || m === 'ai4') return { w: w0*4, h: h0*4 };
-    const p = state.sizePx;
+    const p = state.widthPx, q = state.heightPx;
     if (m === 'width') return { w: p, h: Math.max(1, Math.round(h0 * (p / w0))) };
-    if (m === 'height') return { w: Math.max(1, Math.round(w0 * (p / h0))), h: p };
+    if (m === 'height') return { w: Math.max(1, Math.round(w0 * (q / h0))), h: q };
     // fit
-    const s = Math.min(p / w0, p / h0, 1);
+    const s = Math.min(p / w0, q / h0, 1);
     return { w: Math.max(1, Math.round(w0*s)), h: Math.max(1, Math.round(h0*s)) };
   }
 
@@ -272,29 +293,28 @@
     if (w > 12000 || h > 12000) throw new Error('1辺は12,000px以内にしてください。');
     if (w * h > 67_200_000) throw new Error('拡大後の画素数上限（6,720万）を超えます。');
     UI.assertCanvasSafe(w, h);
+    const rotated = state.rotation === 90 || state.rotation === 270;
     const canvas = document.createElement('canvas');
     canvas.width = w; canvas.height = h;
     const ctx = canvas.getContext('2d');
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = 'high';
+    if (mimeForBackground(state.outFmt, it.file) === 'image/jpeg') { ctx.fillStyle = state.bg; ctx.fillRect(0, 0, canvas.width, canvas.height); }
     if (ai) {
       const scale = state.resizeMode === 'ai2' ? 2 : 4;
-      try {
-        await upscaleTiled(img, canvas, scale, state.controller.signal, index);
-        it.status = 'AI高画質化 完了';
-      } catch (e) {
-        if (state.controller.signal.aborted) throw e;
-        console.warn('AI高画質化に失敗したためスムーズ拡大へ切り替えます。', e);
-        ctx.globalCompositeOperation = 'source-over';
-        ctx.clearRect(0, 0, w, h);
-        ctx.imageSmoothingEnabled = true;
-        ctx.imageSmoothingQuality = 'high';
-        ctx.drawImage(img, 0, 0, w, h);
-        it.status = '高画質化（スムーズ拡大フォールバック）';
-      }
+      try { await upscaleTiled(img, canvas, scale, state.controller.signal, index); it.status = 'AI高画質化 完了'; }
+      catch (e) { if (state.controller.signal.aborted) throw e; throw new Error(`高画質化を利用できません: ${e.message || e}`); }
     } else {
       ctx.drawImage(img, 0, 0, w, h);
     }
+    const exportCanvas = document.createElement('canvas');
+    const exportCtx = exportCanvas.getContext('2d');
+    exportCanvas.width = rotated ? h : w; exportCanvas.height = rotated ? w : h;
+    if (mimeForBackground(state.outFmt, it.file) === 'image/jpeg') { exportCtx.fillStyle = state.bg; exportCtx.fillRect(0, 0, exportCanvas.width, exportCanvas.height); }
+    exportCtx.translate(exportCanvas.width/2, exportCanvas.height/2);
+    exportCtx.rotate(state.rotation * Math.PI / 180);
+    exportCtx.scale(state.flipX ? -1 : 1, state.flipY ? -1 : 1);
+    exportCtx.drawImage(canvas, -w/2, -h/2, w, h);
     let mime = state.outFmt;
     if (mime === 'keep') {
       mime = it.file.type || 'image/png';
@@ -302,7 +322,7 @@
       if (mime === 'image/gif') mime = 'image/png'; // still frame export as png when keep+gif decoded as still
     }
     if (mime === 'image/gif') mime = 'image/png'; // canvas gif encode not native; export png
-    const blob = await UI.canvasToBlob(canvas, mime, 0.92);
+    const blob = await UI.canvasToBlob(exportCanvas, mime, state.quality);
     const ext = mime === 'image/png' ? 'png' : mime === 'image/webp' ? 'webp' : 'jpg';
     let name = buildName(it, index, ext);
     name = UI.uniqueName(name, used);
@@ -310,6 +330,8 @@
     it.blob = blob;
     it.status = it.status || '完了';
   }
+
+  function mimeForBackground(format, item) { return format === 'keep' ? (item.type || (/\.jpe?g$/i.test(item.name) ? 'image/jpeg' : '')) : format; }
 
   async function run() {
     if (state.running) return;
@@ -356,7 +378,10 @@
     const dz = document.getElementById('dz');
     UI.setupDropzone(dz, { onFiles: addFiles });
     document.getElementById('pick').onclick = () => dz.querySelector('input').click();
-    document.getElementById('preset').onchange = (e) => { document.getElementById('sizePx').value = e.target.value; };
+    document.getElementById('preset').onchange = (e) => { document.getElementById('widthPx').value = e.target.value; };
+    document.getElementById('quality').oninput = (e) => { document.getElementById('qualityValue').textContent = e.target.value; };
+    document.getElementById('pickDir').onclick = () => { const i=document.createElement('input'); i.type='file'; i.webkitdirectory=true; i.multiple=true; i.onchange=()=>addFiles([...i.files]); i.click(); };
+    document.addEventListener('paste', (e) => { const fs=[...(e.clipboardData?.files||[])]; if(fs.length)addFiles(fs); });
     document.getElementById('applyName').onclick = applyNames;
     document.getElementById('run').onclick = run;
     document.getElementById('abort').onclick = () => {
@@ -377,6 +402,8 @@
     document.getElementById('count').textContent = `${state.items.length} / 50`;
     applyNames();
   }
+
+  document.addEventListener('error', (e) => { if (e.target?.tagName === 'SCRIPT') setStatus('必要な処理部品を読み込めませんでした。処理は切り替えずに停止します。'); }, true);
 
   render();
 })();

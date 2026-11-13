@@ -35,6 +35,18 @@
       if (cur === item.href || cur.startsWith(item.href)) a.setAttribute('aria-current', 'page');
       nav.appendChild(a);
     });
+    const theme = document.createElement('label');
+    theme.className = 'theme-control';
+    const select = document.createElement('select');
+    select.setAttribute('aria-label', '画面の明るさ');
+    select.innerHTML = '<option value="system">端末に合わせる</option><option value="light">明るい</option><option value="dark">暗い</option>';
+    const key = 'kyg.image-suite.theme';
+    try { select.value = localStorage.getItem(key) || 'system'; } catch { select.value = 'system'; }
+    const apply = () => {
+      document.documentElement.dataset.theme = select.value === 'system' ? '' : select.value;
+      try { localStorage.setItem(key, select.value); } catch { /* private browsing may disable storage */ }
+    };
+    select.addEventListener('change', apply); apply(); theme.append(select); nav.append(theme);
     host.replaceWith(nav);
   }
 

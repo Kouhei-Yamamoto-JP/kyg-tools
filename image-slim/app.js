@@ -16,12 +16,12 @@
         <p class="hint" id="count">0 / 20</p>
       </section>
       <section class="panel">
-        <div class="field"><label>方式</label>
+        <h2>2. 圧縮方法を調整</h2><div class="field"><label>方式</label>
           <select id="mode"><option value="keep">画質優先・最適化</option><option value="manual">圧縮率指定（手動調整）</option></select></div>
         <div class="field"><label>圧縮強度 1〜100（強いほど軽量化）: <span id="qv">40</span></label><input type="range" id="q" min="1" max="100" value="40"></div>
         <label><input type="checkbox" id="strip" checked> メタデータ（Exif等）を削除して軽量化</label>
-        <div class="actions"><button class="btn primary" id="run" type="button">すべて処理</button><button class="btn danger" id="abort" type="button">中止</button><button class="btn" id="zip" type="button" disabled>ZIPで保存</button></div>
-        <div class="status-bar" id="status">待機中</div><div class="preview-box" id="prev"></div>
+        <div class="actions"><button class="btn primary" id="runSelected" type="button">選択した画像を処理</button><button class="btn" id="run" type="button">すべて処理</button><button class="btn danger" id="abort" type="button">中止</button><button class="btn" id="zip" type="button" disabled>ZIPで保存</button></div>
+        <div id="file-list" class="file-list"></div><div class="status-bar" id="status">待機中</div><h2>3. 比較して保存</h2><div class="preview-box" id="prev"></div>
       </section>`;
     wire();
     const saved = Store.getSetting('slim.settings.v2');
@@ -255,14 +255,16 @@
     return file;
   }
 
-  async function run() {
+  async function run(selectedOnly = false) {
     state.mode=document.getElementById('mode').value;state.strength=+document.getElementById('q').value;state.stripMeta=document.getElementById('strip').checked;
     Store.setSetting('slim.settings.v2',{strength:state.strength,mode:state.mode});state.abort=false;
-    const prev=document.getElementById('prev');prev.innerHTML='';state.results=[];
+    const prev=document.getElementById('prev');state.results.forEach(r=>(r.previewUrls||[]).forEach(URL.revokeObjectURL));prev.innerHTML='';state.results=[];
     let animatedPx=0,totalBytes=0;for(const it of state.items)totalBytes+=it.file.size;
     if(state.items.length>20)throw new Error('最大20枚までです。');if(totalBytes>100*MiB)throw new Error('合計100MBを超えます。');
-    for(let i=0;i<state.items.length;i++){
-      if(state.abort)break;const file=state.items[i].file;document.getElementById('status').textContent=`処理中 ${i+1}/${state.items.length}`;
+    const chosen=state.items.map((it,i)=>({it,i})).filter(({it})=>!selectedOnly||it.selected);
+    if(!chosen.length){document.getElementById('status').textContent='処理する画像を選んでください。';return;}
+    for(let k=0;k<chosen.length;k++){
+      if(state.abort)break;const {it,i}=chosen[k],file=it.file;document.getElementById('status').textContent=`処理中 ${k+1}/${chosen.length}`;
       try{
         if(file.size>20*MiB)throw new Error(`${file.name}: 1ファイル20MBまで`);
         const data=await bytesView(file);let w=0,h=0,frames=1,decoded=null;
@@ -276,14 +278,20 @@
         const name=`${String(state.results.length+1).padStart(2,'0')}-${file.name.replace(/\.[^.]+$/,'')}-compressed.${ext}`;
         state.results.push({name,blob:out,before:file.size,after:out.size});
         const previewBlob=UI.isHeicFile(file)&&(decoded?.sourceBlob)?decoded.sourceBlob:out;
-        const url=URL.createObjectURL(previewBlob),rate=Math.max(0,((1-out.size/file.size)*100)).toFixed(1);
-        const fig=document.createElement('figure'),img=document.createElement('img'),caption=document.createElement('figcaption'),button=document.createElement('button');img.src=url;img.alt='';caption.append(`${name}: ${UI.formatBytes(file.size)} → ${UI.formatBytes(out.size)}（-${rate}%） `);button.type='button';button.className='btn';button.textContent='保存';button.dataset.i=String(state.results.length-1);caption.append(button);fig.append(img,caption);prev.append(fig);
+        const beforeUrl=URL.createObjectURL(file),afterUrl=URL.createObjectURL(previewBlob),rate=Math.max(0,((1-out.size/file.size)*100)).toFixed(1);state.results[state.results.length-1].previewUrls=[beforeUrl,afterUrl];
+        const fig=document.createElement('figure'),caption=document.createElement('figcaption'),button=document.createElement('button'),compare=document.createElement('div');compare.className='compare-view';
+        const before=document.createElement('img'),after=document.createElement('img');before.src=beforeUrl;after.src=afterUrl;before.alt='圧縮前';after.alt='圧縮後';
+        const animated=/gif|apng/i.test(file.type||file.name);
+        if(animated){compare.classList.add('compare-animated');const left=document.createElement('div'),right=document.createElement('div');left.className=right.className='compare-side';left.append('圧縮前',before);right.append('圧縮後',after);compare.append(left,right);}
+        else {const layer=document.createElement('div');layer.className='compare-after';layer.append(after);const fitOverlay=()=>{after.style.width=`${compare.clientWidth}px`;after.style.height=`${before.clientHeight}px`;};before.onload=fitOverlay;after.onload=fitOverlay;const slider=document.createElement('input');slider.type='range';slider.min='0';slider.max='100';slider.value='50';slider.setAttribute('aria-label','比較位置');slider.oninput=()=>layer.style.width=`${slider.value}%`;compare.append(before,layer,slider);requestAnimationFrame(fitOverlay);}
+        caption.append(`${name}: ${UI.formatBytes(file.size)} → ${UI.formatBytes(out.size)}（-${rate}%） `);button.type='button';button.className='btn';button.textContent='この画像を保存';button.dataset.i=String(state.results.length-1);caption.append(button);fig.append(compare,caption);prev.append(fig);
       }catch(e){UI.toast(e.message||String(e),'danger');}
     }
     prev.querySelectorAll('[data-i]').forEach(b=>b.onclick=()=>{const r=state.results[+b.dataset.i];UI.downloadBlob(r.blob,r.name);});
     document.getElementById('zip').disabled=!state.results.length;document.getElementById('status').textContent=state.abort?'中止':`完了 ${state.results.length} 件`;
   }
-  function wire(){const dz=document.getElementById('dz');UI.setupDropzone(dz,{onFiles:addFiles});document.getElementById('pick').onclick=()=>dz.querySelector('input').click();document.getElementById('pickDir').onclick=()=>{const i=document.createElement('input');i.type='file';i.webkitdirectory=true;i.multiple=true;i.onchange=()=>addFiles([...i.files]);i.click();};document.addEventListener('paste',e=>{const fs=[...(e.clipboardData?.files||[])];if(fs.length)addFiles(fs);});document.getElementById('q').oninput=e=>document.getElementById('qv').textContent=e.target.value;document.getElementById('run').onclick=()=>run().catch(e=>UI.toast(e.message||String(e),'danger'));document.getElementById('abort').onclick=()=>state.abort=true;document.getElementById('zip').onclick=()=>UI.zipAndDownload(state.results.map(r=>({name:r.name,blob:r.blob})),'slimmed.zip');}
-  function addFiles(files){let sum=state.items.reduce((a,b)=>a+b.file.size,0);for(const f of files){if(state.items.length>=20){UI.toast('最大20枚までです。','danger');break;}if(f.size>20*MiB){UI.toast(`${f.name}: 1ファイル20MBまで`,'danger');continue;}if(sum+f.size>100*MiB){UI.toast('合計100MBを超えます。','danger');break;}state.items.push({file:f});sum+=f.size;}document.getElementById('count').textContent=`${state.items.length} / 20`;}
+  function renderFiles(){const host=document.getElementById('file-list');host.replaceChildren();state.items.forEach(it=>{const label=document.createElement('label');label.className='file-choice';const box=document.createElement('input');box.type='checkbox';box.checked=!!it.selected;box.onchange=()=>it.selected=box.checked;label.append(box,document.createTextNode(it.file.name));host.append(label);});}
+  function wire(){const dz=document.getElementById('dz');UI.setupDropzone(dz,{onFiles:addFiles});document.getElementById('pick').onclick=()=>dz.querySelector('input').click();document.getElementById('pickDir').onclick=()=>{const i=document.createElement('input');i.type='file';i.webkitdirectory=true;i.multiple=true;i.onchange=()=>addFiles([...i.files]);i.click();};document.addEventListener('paste',e=>{const fs=[...(e.clipboardData?.files||[])];if(fs.length)addFiles(fs);});document.getElementById('q').oninput=e=>document.getElementById('qv').textContent=e.target.value;document.getElementById('run').onclick=()=>run(false).catch(e=>UI.toast(e.message||String(e),'danger'));document.getElementById('runSelected').onclick=()=>run(true).catch(e=>UI.toast(e.message||String(e),'danger'));document.getElementById('abort').onclick=()=>state.abort=true;document.getElementById('zip').onclick=()=>UI.zipAndDownload(state.results.map(r=>({name:r.name,blob:r.blob})),'slimmed.zip');}
+  function addFiles(files){let sum=state.items.reduce((a,b)=>a+b.file.size,0);for(const f of files){if(state.items.length>=20){UI.toast('最大20枚までです。','danger');break;}if(f.size>20*MiB){UI.toast(`${f.name}: 1ファイル20MBまで`,'danger');continue;}if(sum+f.size>100*MiB){UI.toast('合計100MBを超えます。','danger');break;}state.items.push({file:f,selected:true});sum+=f.size;}document.getElementById('count').textContent=`${state.items.length} / 20`;renderFiles();}
   render();
 })();
