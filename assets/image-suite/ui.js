@@ -2,8 +2,10 @@
   const NAV = [
     { href: '/image-workbench/', label: '形式とサイズ' },
     { href: '/image-slim/', label: '軽量化' },
+    { href: '/video-slim/', label: '動画を軽くする' },
     { href: '/mark-images/', label: '透かしを重ねる' },
     { href: '/image-tiles/', label: '切り分け' },
+    { href: '/image-sheet/', label: '画像をつなげる' },
     { href: '/photo-metadata/', label: '撮影データを見る' },
     { href: '/clip-gif/', label: 'GIFを作る' },
     { href: '/post-panels/', label: '連続画像を作る' },
